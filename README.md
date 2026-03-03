@@ -1,3 +1,3 @@
 # RNAnalysis
 
-<img src="download.jpg" alt="RNAnalysis App" width="600">
+<img src="download.jpg" alt="RNAnalysis App" width="400">
