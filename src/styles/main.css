@@ -1,0 +1,1985 @@
+/* =============================================================================
+   RNA-seq Differential Analyzer - Main Stylesheet
+   ============================================================================= */
+
+/* CSS Variables - Coral, Chiffon, Ash & Linen Theme */
+:root {
+    /* Primary Colors
+       vibrant-coral: #ed6a5a  lemon-chiffon: #f4f1bb
+       ash-grey: #9bc1bc       soft-linen: #e6ebe0    */
+    --primary-color: #8a8f87;      /* matte grey */
+    --primary-dark: #6b706a;
+    --primary-light: #a5aaa2;
+    --secondary-color: #a3aa9e;
+    --success-color: #7a8577;
+    --danger-color: #ed6a5a;       /* vibrant coral */
+    --warning-color: #f4f1bb;      /* lemon chiffon */
+
+    /* Burnt orange for header & status bar */
+    --bar-color: #c45a3c;
+
+    /* Gene colors */
+    --up-color: #ed6a5a;           /* vibrant coral */
+    --down-color: #7a8a7e;         /* matte grey */
+    --ns-color: #b0b5ab;
+
+    /* UI Colors */
+    --bg-color: #dce1d6;           /* darker soft linen */
+    --bg-secondary: #f5f5f2;
+    --bg-tertiary: #cdd3c6;
+    --border-color: #b0b5ab;
+    --text-color: #2d3630;
+    --text-muted: #5e6b62;
+    --text-dark: #1a211c;
+
+    /* Table colors */
+    --table-header-bg: #c45a3c;
+    --table-header-text: #FFFFFF;
+    --table-row-hover: rgba(138, 143, 135, 0.12);
+    --table-row-selected: rgba(138, 143, 135, 0.25);
+    --table-row-up: rgba(237, 106, 90, 0.14);
+    --table-row-down: rgba(138, 143, 135, 0.14);
+
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    /* Layout */
+    --script-panel-width: 350px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-normal: 250ms ease;
+
+    /* Border radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+}
+
+/* Reset & Base */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-color);
+    background-color: var(--bg-color);
+    overflow: hidden;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* =============================================================================
+   Header
+   ============================================================================= */
+.app-header {
+    display: flex;
+    flex-direction: column;
+    background: var(--bar-color);
+    color: white;
+    -webkit-app-region: drag;
+}
+
+/* Drag region that provides space for macOS stoplight buttons */
+.header-drag-region {
+    height: 28px;
+    width: 100%;
+    -webkit-app-region: drag;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-lg) var(--spacing-sm);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    -webkit-app-region: no-drag;
+}
+
+.project-folder-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 150ms;
+}
+
+.project-folder-btn:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+.folder-icon {
+    font-size: 14px;
+}
+
+.project-path {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.9;
+}
+
+.header-title h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+.header-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 12px;
+    -webkit-app-region: no-drag;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--warning-color);
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.connected {
+    background-color: var(--success-color);
+    animation: none;
+}
+
+.status-indicator.error {
+    background-color: var(--danger-color);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* =============================================================================
+   Main Container Layout
+   ============================================================================= */
+.main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* =============================================================================
+   Tab Navigation (Horizontal)
+   ============================================================================= */
+.tab-nav {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 var(--spacing-lg);
+}
+
+.tab-nav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.nav-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.nav-tab:hover {
+    color: var(--text-dark);
+    background-color: var(--bg-color);
+}
+
+.nav-tab.active {
+    color: var(--primary-dark);
+    border-bottom-color: var(--primary-color);
+    background-color: rgba(124, 158, 178, 0.08);
+}
+
+.nav-tab.completed .tab-number {
+    background-color: var(--success-color);
+}
+
+.tab-number {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.nav-tab.active .tab-number {
+    background-color: var(--primary-color);
+}
+
+.tab-label {
+    white-space: nowrap;
+}
+
+.tab-arrow {
+    color: var(--border-color);
+    font-size: 18px;
+    font-weight: 300;
+    user-select: none;
+}
+
+/* =============================================================================
+   Tool Indicator Bar
+   ============================================================================= */
+.tool-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 4px var(--spacing-lg);
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+}
+
+.tool-bar-label {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.tool-bar-name {
+    color: var(--primary-dark);
+    font-weight: 700;
+}
+
+.tool-bar-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.tool-bar-sep {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+/* =============================================================================
+   Project File Drawer
+   ============================================================================= */
+.project-drawer {
+    position: absolute;
+    top: 80px;
+    left: var(--spacing-md);
+    width: 280px;
+    max-height: 400px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+}
+
+.project-drawer.hidden {
+    display: none !important;
+}
+
+.drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.drawer-header h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin: 0;
+}
+
+.drawer-content {
+    padding: var(--spacing-sm);
+    overflow-y: auto;
+    max-height: 340px;
+}
+
+.drawer-file {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 6px var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-color);
+    transition: background 100ms;
+}
+
+.drawer-file:hover {
+    background: var(--bg-color);
+}
+
+.drawer-file-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.drawer-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* =============================================================================
+   Tool Selector (Analysis Panel)
+   ============================================================================= */
+.tool-selector {
+    margin-bottom: var(--spacing-lg);
+}
+
+.tool-selector h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-dark);
+}
+
+.tool-toggle {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.tool-option {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--spacing-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.tool-option:hover {
+    border-color: var(--primary-light);
+    background: rgba(124, 158, 178, 0.05);
+}
+
+.tool-option.active {
+    border-color: var(--primary-color);
+    background: rgba(124, 158, 178, 0.1);
+}
+
+.tool-option-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.tool-option-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* =============================================================================
+   Analysis Parameters
+   ============================================================================= */
+.params-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.params-header {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-dark);
+}
+
+.advanced-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-sm);
+}
+
+.advanced-warning {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--danger-color);
+    font-style: italic;
+}
+
+.tool-params {
+    margin-top: var(--spacing-md);
+}
+
+.advanced-section {
+    padding-top: var(--spacing-md);
+    border-top: 1px dashed var(--border-color);
+}
+
+/* Legacy sidebar compat: keep nav-step class working for JS that references it */
+.nav-step { display: none; }
+
+/* =============================================================================
+   Info Tooltips
+   ============================================================================= */
+.info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: normal;
+    cursor: help;
+    position: relative;
+    vertical-align: middle;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+.info-icon:hover {
+    background-color: var(--primary-color);
+}
+
+.info-icon .tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 240px;
+    padding: 8px 10px;
+    background: var(--text-dark);
+    color: white;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    z-index: 200;
+    pointer-events: none;
+    white-space: normal;
+}
+
+.info-icon .tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--text-dark);
+}
+
+.info-icon:hover .tooltip {
+    display: block;
+}
+
+/* Doc links */
+.tool-doc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--primary-color);
+    text-decoration: none;
+    margin-top: 4px;
+}
+
+.tool-doc-link:hover {
+    text-decoration: underline;
+    color: var(--primary-dark);
+}
+
+.tool-docs-bar {
+    display: flex;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-color);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.tool-docs-bar .doc-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tool-docs-bar .doc-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* Tool citations */
+.tool-citation {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.tool-citation a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-style: normal;
+    font-size: 10px;
+}
+
+.tool-citation a:hover {
+    text-decoration: underline;
+}
+
+.panel-header .tool-citation {
+    margin-top: 6px;
+}
+
+/* Citations panel */
+.citations-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.citations-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.citation-card {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.citation-card h4 {
+    margin: 0 0 6px 0;
+    font-size: 13px;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.citation-card .citation-text {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-dark);
+}
+
+.citation-card .citation-doi {
+    font-size: 11px;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.citation-card .citation-doi:hover {
+    text-decoration: underline;
+}
+
+/* =============================================================================
+   Content Area
+   ============================================================================= */
+.content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-lg);
+}
+
+.panel {
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.panel.hidden {
+    display: none;
+}
+
+.panel-header {
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.panel-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+}
+
+.panel-description {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.panel-content {
+    padding: var(--spacing-lg);
+}
+
+/* =============================================================================
+   Buttons
+   ============================================================================= */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-dark);
+}
+
+.btn-secondary {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: var(--border-color);
+}
+
+.btn-small {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 12px;
+}
+
+.btn-large {
+    padding: var(--spacing-md) var(--spacing-xl);
+    font-size: 16px;
+}
+
+.btn-text {
+    background: none;
+    color: var(--primary-color);
+}
+
+.btn-text:hover {
+    text-decoration: underline;
+}
+
+.btn-icon {
+    font-size: 16px;
+}
+
+/* =============================================================================
+   Data Loading Panel
+   ============================================================================= */
+.data-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xl);
+}
+
+.action-divider {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.example-data-hint {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: var(--spacing-md);
+    text-align: center;
+}
+
+.example-data-hint a {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.example-data-hint a:hover {
+    text-decoration: underline;
+}
+
+.file-inputs {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+.data-preview {
+    margin-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--spacing-lg);
+}
+
+.preview-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.preview-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
+}
+
+.data-info {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-sm);
+}
+
+/* =============================================================================
+   Tables
+   ============================================================================= */
+.table-container {
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+    padding: var(--spacing-sm) var(--spacing-md);
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+    background-color: var(--bg-color);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+.data-table tr:hover {
+    background-color: var(--bg-color);
+}
+
+.results-table {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* =============================================================================
+   Form Elements
+   ============================================================================= */
+.form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: var(--spacing-xs);
+    color: var(--text-muted);
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 14px;
+    color: var(--text-dark);
+    background-color: var(--bg-secondary);
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.config-form {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+    max-width: 500px;
+}
+
+.param-group {
+    display: flex;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.param-group .form-group {
+    margin-bottom: 0;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+}
+
+/* =============================================================================
+   DESeq2 Results
+   ============================================================================= */
+.deseq-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-lg);
+}
+
+.analysis-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-lg);
+    background-color: var(--bg-color);
+    border-radius: 6px;
+}
+
+.loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.results-summary {
+    margin-top: var(--spacing-lg);
+}
+
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-md);
+}
+
+.summary-card {
+    background-color: var(--bg-color);
+    padding: var(--spacing-lg);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.summary-card .card-value {
+    display: block;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: var(--spacing-xs);
+}
+
+.summary-card .card-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-card.significant .card-value { color: var(--warning-color); }
+.summary-card.up .card-value { color: var(--up-color); }
+.summary-card.down .card-value { color: var(--down-color); }
+
+.results-table-section {
+    margin-top: var(--spacing-lg);
+}
+
+.table-controls {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.table-controls input,
+.table-controls select {
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.table-controls input {
+    flex: 1;
+    max-width: 300px;
+}
+
+/* =============================================================================
+   Visualization Panel
+   ============================================================================= */
+.viz-tabs {
+    display: flex;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.viz-tab {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.viz-tab:hover {
+    color: var(--text-color);
+}
+
+.viz-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.viz-panel.hidden {
+    display: none;
+}
+
+.viz-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) 0;
+    margin-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.control-group {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+}
+
+.control-group label {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.control-group input,
+.control-group select {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.control-group input[type="number"] {
+    width: 80px;
+}
+
+.plot-container {
+    width: 100%;
+    min-height: 500px;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.selected-genes {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--bg-color);
+    border-radius: 6px;
+    margin-bottom: var(--spacing-md);
+}
+
+.selected-genes .label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.gene-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    flex: 1;
+}
+
+.gene-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 2px 8px;
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.gene-chip .remove {
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.gene-chip .remove:hover {
+    opacity: 1;
+}
+
+.placeholder {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* =============================================================================
+   Plot Mode Switch (Plotly / Python / Both toggle)
+   ============================================================================= */
+.control-group-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-left: auto;
+}
+
+.plot-mode-switch {
+    display: inline-flex;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--border-color);
+}
+
+.plot-mode-switch .mode-btn {
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.plot-mode-switch .mode-btn:hover {
+    color: var(--text-color);
+    background: rgba(255,255,255,0.5);
+}
+
+.plot-mode-switch .mode-btn.active {
+    background: var(--bar-color);
+    color: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+/* =============================================================================
+   Switchable Plot Container (replaces old dual-plot-container)
+   ============================================================================= */
+.switchable-plot-container {
+    display: grid;
+    gap: var(--spacing-md);
+}
+
+.switchable-plot-container.show-plotly {
+    grid-template-columns: 1fr;
+}
+.switchable-plot-container.show-plotly .plot-pane-python {
+    display: none;
+}
+
+.switchable-plot-container.show-python {
+    grid-template-columns: 1fr;
+}
+.switchable-plot-container.show-python .plot-pane-plotly {
+    display: none;
+}
+
+.switchable-plot-container.show-both {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* Responsive: stack side-by-side "both" vertically on narrow screens */
+@media (max-width: 1400px) {
+    .switchable-plot-container.show-both {
+        grid-template-columns: 1fr;
+    }
+}
+
+.plot-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mpl-plot, .mpl-plot-full {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    min-height: 500px;
+    overflow: auto;
+}
+
+.mpl-plot-full {
+    min-height: 600px;
+    padding: var(--spacing-md);
+}
+
+.mpl-plot img, .mpl-plot svg,
+.mpl-plot-full img, .mpl-plot-full svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.mpl-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: var(--spacing-xl);
+}
+
+/* =============================================================================
+   Script Panel (Step 5 - Main Content Area)
+   ============================================================================= */
+.script-options {
+    margin-bottom: var(--spacing-lg);
+}
+
+.script-options h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+}
+
+.script-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md) var(--spacing-xl);
+}
+
+.script-checkboxes .checkbox-label {
+    min-width: 150px;
+}
+
+.script-actions-bar {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.script-preview {
+    margin-top: var(--spacing-lg);
+}
+
+.script-preview h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+}
+
+.script-code-container {
+    background-color: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.script-code-container pre {
+    margin: 0;
+    padding: var(--spacing-lg);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.script-code-container code {
+    color: #d4d4d4;
+}
+
+/* Syntax highlighting for script preview */
+.script-code-container .comment { color: #6a9955; }
+.script-code-container .keyword { color: #569cd6; }
+.script-code-container .string { color: #ce9178; }
+.script-code-container .function { color: #dcdcaa; }
+.script-code-container .number { color: #b5cea8; }
+
+/* =============================================================================
+   Environment Export Section
+   ============================================================================= */
+.env-export-section {
+    margin-top: var(--spacing-xl);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+}
+
+.env-export-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
+}
+
+.env-format-tabs {
+    display: inline-flex;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--border-color);
+    margin-bottom: var(--spacing-md);
+}
+
+.env-tab {
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.env-tab:hover {
+    color: var(--text-color);
+    background: rgba(255,255,255,0.5);
+}
+
+.env-tab.active {
+    background: var(--bar-color);
+    color: white;
+}
+
+.env-actions-bar {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.env-code-container {
+    background-color: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.env-code-container pre {
+    margin: 0;
+    padding: var(--spacing-lg);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.env-code-container code {
+    color: #d4d4d4;
+}
+
+/* =============================================================================
+   Status Bar
+   ============================================================================= */
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--spacing-xs) var(--spacing-md);
+    background-color: var(--bar-color);
+    color: white;
+    font-size: 12px;
+}
+
+/* =============================================================================
+   GSEA Panel
+   ============================================================================= */
+.gsea-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+    align-items: flex-end;
+    margin-bottom: var(--spacing-lg);
+}
+
+.gsea-controls .form-group {
+    margin-bottom: 0;
+    min-width: 200px;
+}
+
+.gsea-results {
+    margin-top: var(--spacing-lg);
+}
+
+/* =============================================================================
+   Utilities
+   ============================================================================= */
+.hidden {
+    display: none !important;
+}
+
+.text-up { color: var(--up-color); }
+.text-down { color: var(--down-color); }
+.text-muted { color: var(--text-muted); }
+
+/* =============================================================================
+   Tabulator Table Customization - Muted Pastel Theme
+   ============================================================================= */
+.tabulator-table {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.tabulator {
+    font-size: 13px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: #2D3748;
+}
+
+/* Header styling - work with tabulator_simple white bg, use dark text */
+.tabulator .tabulator-header {
+    border-bottom: 2px solid var(--border-color) !important;
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
+.tabulator .tabulator-col-title {
+    color: var(--text-dark) !important;
+    font-weight: 700 !important;
+}
+
+/* Header sort arrow color */
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-content .tabulator-col-sorter .tabulator-arrow {
+    border-bottom-color: var(--text-dark) !important;
+    border-top-color: var(--text-dark) !important;
+}
+
+/* Header filter inputs */
+.tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    color: #2D3748;
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-header-filter input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Row styling - force dark text over theme defaults */
+.tabulator .tabulator-tableholder .tabulator-table .tabulator-row {
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-secondary) !important;
+    color: #2D3748 !important;
+}
+
+.tabulator .tabulator-tableholder .tabulator-table .tabulator-row:nth-child(even) {
+    background-color: var(--bg-tertiary) !important;
+}
+
+/* Cell text - force dark */
+.tabulator .tabulator-tableholder .tabulator-table .tabulator-row .tabulator-cell {
+    color: #2D3748 !important;
+    border-right: 1px solid var(--border-color);
+}
+
+/* Ensure all tabulator text is dark */
+.tabulator-row .tabulator-cell,
+.tabulator .tabulator-cell {
+    color: #2D3748 !important;
+}
+
+/* Row hover and selection */
+.tabulator-row.tabulator-selectable:hover {
+    background-color: var(--table-row-hover) !important;
+}
+
+.tabulator-row.tabulator-selected {
+    background-color: var(--table-row-selected) !important;
+}
+
+/* Footer/pagination styling */
+.tabulator .tabulator-footer {
+    background-color: var(--bg-tertiary);
+    border-top: 1px solid var(--border-color);
+    color: #2D3748;
+}
+
+.tabulator .tabulator-footer .tabulator-page {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: #2D3748;
+    border-radius: var(--radius-sm);
+}
+
+.tabulator .tabulator-footer .tabulator-page.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.tabulator .tabulator-footer .tabulator-page:hover:not(.active) {
+    background-color: var(--table-row-hover);
+}
+
+.tabulator .tabulator-footer .tabulator-paginator label,
+.tabulator .tabulator-footer .tabulator-page-size {
+    color: #2D3748;
+}
+
+/* Page size selector */
+.tabulator .tabulator-footer .tabulator-page-size select {
+    color: #2D3748;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.table-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-md);
+    font-style: italic;
+}
+
+/* =============================================================================
+   PCA Panel
+   ============================================================================= */
+.pca-info {
+    display: flex;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--table-row-hover);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.variance-info {
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.pca-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.pca-options label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 13px;
+}
+
+/* =============================================================================
+   GSEA Panel Enhancements
+   ============================================================================= */
+.gsea-plot-controls {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--bg-color);
+    border-radius: 6px;
+}
+
+.gsea-plot-controls label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.gsea-plot-controls input[type="number"] {
+    width: 60px;
+}
+
+.gsea-results h4 {
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* =============================================================================
+   FASTQ Processing Panel (Step 0)
+   ============================================================================= */
+
+.fastq-section {
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+}
+
+.fastq-section h3 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-dark);
+}
+
+.section-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-sm);
+}
+
+/* Index options */
+.fastq-index-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.index-option {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-dark);
+    cursor: pointer;
+}
+
+.index-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+.index-status.status-ok {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.index-status.status-missing {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.index-status.status-running {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+/* Custom FASTA controls */
+.custom-fasta-controls {
+    margin-top: var(--spacing-sm);
+    margin-left: 24px;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.file-path-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.file-path {
+    font-size: 12px;
+    color: var(--text-muted);
+    word-break: break-all;
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* FASTQ mode toggle */
+.fastq-mode-toggle {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+/* Sample table */
+.sample-table-container {
+    overflow-x: auto;
+    margin-bottom: var(--spacing-sm);
+}
+
+.sample-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.sample-table th,
+.sample-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dark);
+}
+
+.sample-table th {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sample-name-input {
+    width: 120px;
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-dark);
+    background: var(--bg-primary);
+}
+
+.fastq-files-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.file-list {
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sample-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+/* Tiny button variant */
+.btn-tiny {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: var(--radius-sm);
+}
+
+/* Run section */
+.fastq-run-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* Progress bar */
+.kallisto-progress {
+    width: 100%;
+    max-width: 500px;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    display: block;
+}
+
+/* Results */
+#kallisto-results-summary {
+    font-size: 13px;
+    color: var(--text-dark);
+    margin-bottom: var(--spacing-md);
+}
+
+#kallisto-results-summary div {
+    padding: 2px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* QC Stats Section */
+.qc-stats-section {
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.qc-stats-section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: var(--spacing-md);
+}
+
+.qc-plot-container {
+    margin-bottom: var(--spacing-lg);
+    text-align: center;
+}
+
+.qc-plot-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.qc-stats-table-container {
+    margin-bottom: var(--spacing-lg);
+    overflow-x: auto;
+}
+
+.qc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.qc-table th,
+.qc-table td {
+    padding: 6px 10px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.qc-table th {
+    background: var(--bg-medium);
+    color: var(--text-dark);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.qc-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+}
+
+.qc-good {
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.qc-warn {
+    color: #FF9800;
+    font-weight: 600;
+}
+
+.qc-bad {
+    color: #F44336;
+    font-weight: 600;
+}
+
+/* =============================================================================
+   Responsive
+   ============================================================================= */
+@media (max-width: 1200px) {
+    .script-panel {
+        width: 280px;
+    }
+}
+
+/* =============================================================================
+   First-Run Setup Screen
+   ============================================================================= */
+.setup-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-app-region: drag;
+}
+
+.setup-container {
+    text-align: center;
+    max-width: 480px;
+    padding: var(--spacing-xl);
+    -webkit-app-region: no-drag;
+}
+
+.setup-icon {
+    font-size: 48px;
+    margin-bottom: var(--spacing-lg);
+}
+
+.setup-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: var(--spacing-sm);
+}
+
+.setup-subtitle {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
+}
+
+.setup-detail {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-md);
+    min-height: 20px;
+}
+
+.setup-progress-container {
+    width: 100%;
+    height: 6px;
+    background: var(--border-color);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: var(--spacing-lg);
+}
+
+.setup-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.setup-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* =============================================================================
+   Platform Warning Banner (Windows FASTQ)
+   ============================================================================= */
+.platform-warning {
+    margin-bottom: var(--spacing-lg);
+}
+
+.warning-banner {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    color: #664d03;
+}
+
+.warning-banner strong {
+    display: block;
+    margin-bottom: var(--spacing-xs);
+}
+
+.warning-banner p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}

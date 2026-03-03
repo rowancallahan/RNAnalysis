@@ -1,0 +1,80 @@
+{
+  "name": "rnaseq-deseq2-analyzer",
+  "version": "1.0.0",
+  "license": "GPL-3.0-only",
+  "description": "RNA-seq DESeq2 Analysis Application with interactive visualizations",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "plotly.js-dist": "^2.35.3"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.rnaseq.deseq2analyzer",
+    "productName": "rna-analysis-tool",
+    "icon": "build/icon",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "scripts/**/*",
+      "src/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "python",
+        "to": "python",
+        "filter": [
+          "**/*",
+          "!__pycache__/**",
+          "!**/__pycache__/**"
+        ]
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["arm64"] }
+      ],
+      "extraResources": [
+        {
+          "from": "bin/kallisto/mac",
+          "to": "bin/kallisto/mac",
+          "filter": ["**/*"]
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "extraResources": [
+        {
+          "from": "bin/kallisto/linux",
+          "to": "bin/kallisto/linux",
+          "filter": ["**/*"]
+        }
+      ]
+    }
+  }
+}

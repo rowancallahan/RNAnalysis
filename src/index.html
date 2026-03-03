@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.plot.ly https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* https://cdn.plot.ly https://unpkg.com;">
+    <title>rna-analysis-tool</title>
+    <link rel="stylesheet" href="styles/main.css?v=5">
+    <!-- Tabulator for interactive tables - using simple theme -->
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_simple.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <!-- Plotly for interactive charts -->
+    <script src="https://cdn.plot.ly/plotly-2.35.3.min.js"></script>
+</head>
+<body>
+    <!-- First-run setup screen (hidden when Python env is ready) -->
+    <div id="setup-screen" class="setup-screen" style="display: none;">
+        <div class="setup-container">
+            <div class="setup-icon">&#x1F9EC;</div>
+            <h1 class="setup-title">RNA-seq Differential Analyzer</h1>
+            <p class="setup-subtitle">Setting up your analysis environment</p>
+            <p class="setup-detail" id="setup-detail">Checking environment...</p>
+            <div class="setup-progress-container">
+                <div class="setup-progress-bar" id="setup-progress-bar" style="width: 0%"></div>
+            </div>
+            <p class="setup-note" id="setup-note">This only needs to happen once. The app will download Python and the required analysis packages.</p>
+        </div>
+    </div>
+
+    <div id="app">
+        <!-- Header with padding for macOS stoplight buttons -->
+        <header class="app-header">
+            <div class="header-drag-region"></div>
+            <div class="header-content">
+                <div class="header-left">
+                    <button class="project-folder-btn" id="btn-open-project" title="Open project folder">
+                        <span class="project-path" id="project-path-display">No project folder</span>
+                    </button>
+                </div>
+                <div class="header-title">
+                    <h1>RNA-seq Differential Analyzer</h1>
+                </div>
+                <div class="header-status" id="python-status">
+                    <span class="status-indicator" id="status-dot"></span>
+                    <span id="status-text">Connecting to Python...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation Bar -->
+        <nav class="tab-nav">
+            <div class="tab-nav-tabs">
+                <button class="nav-tab" data-panel="fastq">
+                    <span class="tab-number">0</span>
+                    <span class="tab-label">FASTQ</span>
+                </button>
+                <span class="tab-arrow">›</span>
+                <button class="nav-tab active" data-panel="data">
+                    <span class="tab-number">1</span>
+                    <span class="tab-label">Data</span>
+                </button>
+                <span class="tab-arrow">›</span>
+                <button class="nav-tab" data-panel="deseq">
+                    <span class="tab-number">2</span>
+                    <span class="tab-label">Analysis</span>
+                </button>
+                <span class="tab-arrow">›</span>
+                <button class="nav-tab" data-panel="visualization">
+                    <span class="tab-number">3</span>
+                    <span class="tab-label">Visualizations</span>
+                </button>
+                <span class="tab-arrow">›</span>
+                <button class="nav-tab" data-panel="script">
+                    <span class="tab-number">4</span>
+                    <span class="tab-label">Export</span>
+                </button>
+                <span class="tab-arrow">›</span>
+                <button class="nav-tab" data-panel="citations">
+                    <span class="tab-number">5</span>
+                    <span class="tab-label">Citations</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Tool Indicator Bar -->
+        <div class="tool-bar">
+            <span class="tool-bar-item hidden" id="tool-bar-kallisto">
+                <span class="tool-bar-label">Pseudo Aligning:</span>
+                <span class="tool-bar-name">Kallisto</span>
+                <span class="tool-bar-sep">&nbsp;&middot;&nbsp;</span>
+            </span>
+            <span class="tool-bar-label">Differential Testing:</span>
+            <span class="tool-bar-name" id="tool-bar-name">pyDESeq2</span>
+        </div>
+
+        <!-- Project File Browser Drawer -->
+        <div class="project-drawer hidden" id="project-drawer">
+            <div class="drawer-header">
+                <h4>Project Files</h4>
+                <button class="btn btn-tiny btn-text" id="btn-close-drawer">✕</button>
+            </div>
+            <div class="drawer-content" id="project-file-list">
+                <p class="text-muted">Open a project folder to see files</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-container">
+            <main class="content-area">
+                <!-- FASTQ Processing Panel (Step 0) -->
+                <section class="panel hidden" id="panel-fastq">
+                    <div class="panel-header">
+                        <h2>Process FASTQ Files</h2>
+                        <p class="panel-description">Use kallisto to quantify gene expression from raw FASTQ files, or skip to Step 1 to load a counts matrix directly.</p>
+                        <span class="tool-citation">Bray NL, Pimentel H, Melsted P, Pachter L. <em>Nature Biotechnology</em>, 2016. <a href="https://doi.org/10.1038/nbt.3519" target="_blank" rel="noopener">DOI: 10.1038/nbt.3519</a></span>
+                    </div>
+                    <div class="panel-content">
+                        <!-- Metadata (load first so groups appear in sample table) -->
+                        <div class="fastq-section" id="fastq-metadata-section">
+                            <h3>Sample Metadata (optional)</h3>
+                            <p class="section-hint">Load a CSV with sample names as the first column and conditions/groups as additional columns.</p>
+                            <div class="file-path-row">
+                                <button class="btn btn-small btn-secondary" id="btn-browse-metadata-fastq">Browse Metadata CSV</button>
+                                <span class="file-path" id="fastq-metadata-path-display">No file selected</span>
+                            </div>
+                        </div>
+
+                        <!-- Sample Configuration -->
+                        <div class="fastq-section" id="fastq-samples-section">
+                            <h3>Samples</h3>
+                            <div class="fastq-mode-toggle">
+                                <label class="radio-label">
+                                    <input type="radio" name="fastq-mode" value="single" checked> Single-end
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="fastq-mode" value="paired"> Paired-end
+                                </label>
+                            </div>
+                            <div class="sample-table-container">
+                                <table class="sample-table" id="fastq-sample-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Sample Name</th>
+                                            <th>FASTQ File(s)</th>
+                                            <th>Status</th>
+                                            <th>Group</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fastq-sample-tbody">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button class="btn btn-small btn-secondary" id="btn-add-sample">+ Add Sample</button>
+                        </div>
+
+                        <!-- Reference Index Section -->
+                        <div class="fastq-section" id="fastq-index-section">
+                            <h3>Reference Index</h3>
+                            <div class="fastq-index-options">
+                                <div class="index-option">
+                                    <label class="radio-label">
+                                        <input type="radio" name="index-source" value="prebuilt" checked>
+                                        Use prebuilt human index (GRCh38/hg38)
+                                    </label>
+                                    <span class="index-status" id="prebuilt-index-status">Checking...</span>
+                                    <button class="btn btn-small btn-secondary hidden" id="btn-download-index">Download Index (138 MB)</button>
+                                </div>
+                                <div class="index-option">
+                                    <label class="radio-label">
+                                        <input type="radio" name="index-source" value="custom-index">
+                                        Load existing index file (.idx)
+                                    </label>
+                                    <div class="custom-index-controls hidden" id="custom-index-controls">
+                                        <div class="file-path-row">
+                                            <button class="btn btn-small btn-secondary" id="btn-browse-index">Browse Index</button>
+                                            <span class="file-path" id="index-path-display">No file selected</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="index-option">
+                                    <label class="radio-label">
+                                        <input type="radio" name="index-source" value="custom-fasta">
+                                        Build from custom FASTA
+                                    </label>
+                                    <div class="custom-fasta-controls hidden" id="custom-fasta-controls">
+                                        <div class="file-path-row">
+                                            <button class="btn btn-small btn-secondary" id="btn-browse-fasta">Browse FASTA</button>
+                                            <span class="file-path" id="fasta-path-display">No file selected</span>
+                                        </div>
+                                        <button class="btn btn-small btn-primary" id="btn-build-index">Build Index</button>
+                                        <span class="index-status" id="build-index-status"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Run -->
+                        <div class="fastq-section fastq-run-section">
+                            <button class="btn btn-primary btn-large" id="btn-run-kallisto">
+                                Run Kallisto Quantification
+                            </button>
+                            <div class="kallisto-progress hidden" id="kallisto-progress">
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" id="kallisto-progress-bar"></div>
+                                </div>
+                                <span class="progress-text" id="kallisto-progress-text">Processing...</span>
+                            </div>
+                        </div>
+
+                        <!-- Results -->
+                        <div class="fastq-section hidden" id="fastq-results-section">
+                            <h3>Quantification Results</h3>
+                            <div id="kallisto-results-summary"></div>
+
+                            <!-- QC Stats Section -->
+                            <div class="qc-stats-section" id="kallisto-qc-section">
+                                <h4>QC Summary</h4>
+                                <div class="qc-plot-container" id="kallisto-qc-plot"></div>
+                                <button class="btn btn-small btn-secondary" id="btn-download-qc-plot" style="margin-top: 6px;">Download QC Plot</button>
+                                <div class="qc-stats-table-container" id="kallisto-qc-table"></div>
+                                <button class="btn btn-small btn-secondary" id="btn-download-qc-table" style="margin-top: 6px;">Download QC Table (CSV)</button>
+                            </div>
+
+                            <button class="btn btn-primary" id="btn-combine-continue">
+                                Combine Counts & Continue to Step 1
+                            </button>
+                        </div>
+
+                        <!-- Bottom hint -->
+                        <div class="fastq-section" style="text-align: center; padding: 12px 0; opacity: 0.7;">
+                            <p class="section-hint">No data? <a href="#" id="btn-load-example-fastq-bottom" style="color: #c45a3c; font-weight: 600;">Load example data</a> to explore the workflow.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Data Panel -->
+                <section class="panel" id="panel-data">
+                    <div class="panel-header">
+                        <h2>Load Data</h2>
+                        <p class="panel-description">Import your count matrix and sample metadata, or load example data to explore.</p>
+                    </div>
+                    <div class="panel-content">
+                        <div class="data-actions">
+                            <div class="file-inputs">
+                                <button class="btn btn-secondary" id="btn-load-counts">
+                                    <span class="btn-icon">📁</span>
+                                    Load Counts File
+                                </button>
+                                <button class="btn btn-secondary" id="btn-load-metadata">
+                                    <span class="btn-icon">📋</span>
+                                    Load Metadata File
+                                </button>
+                            </div>
+                            <p class="example-data-hint">No counts? <a href="#" id="btn-load-example">Load example data by clicking me</a></p>
+                        </div>
+
+                        <div class="data-preview" id="data-preview" style="display: none;">
+                            <div class="preview-section">
+                                <h3>Count Matrix</h3>
+                                <div class="data-info" id="counts-info"></div>
+                                <div id="counts-preview" class="tabulator-table"></div>
+                            </div>
+                            <div class="preview-section">
+                                <h3>Sample Metadata</h3>
+                                <div class="data-info" id="metadata-info"></div>
+                                <div id="metadata-preview" class="tabulator-table"></div>
+                            </div>
+                            <div class="config-section">
+                                <h3>Analysis Configuration</h3>
+                                <div class="config-form">
+                                    <div class="form-group">
+                                        <label for="condition-column">Condition Column</label>
+                                        <select id="condition-column"></select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="reference-level">Reference Level</label>
+                                        <select id="reference-level"></select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Differential Testing Panel (Step 2) -->
+                <section class="panel hidden" id="panel-deseq">
+                    <div class="panel-header">
+                        <h2>Differential Expression Analysis</h2>
+                        <p class="panel-description">Run differential expression testing to identify up and down regulated genes.</p>
+                    </div>
+                    <div class="panel-content">
+                        <!-- Tool Selector -->
+                        <div class="tool-selector">
+                            <h3>Analysis Tool</h3>
+                            <div class="tool-toggle">
+                                <button class="tool-option active" data-tool="pydeseq2">
+                                    <span class="tool-option-name">pyDESeq2</span>
+                                    <span class="tool-option-desc">Negative binomial GLM, Wald test</span>
+                                </button>
+                                <button class="tool-option" data-tool="edgepython">
+                                    <span class="tool-option-name">edgePython</span>
+                                    <span class="tool-option-desc">TMM normalization, QL F-test</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Documentation Links -->
+                        <div class="tool-docs-bar">
+                            <div class="doc-item" id="doc-pydeseq2">
+                                <span class="doc-label">pyDESeq2 docs</span>
+                                <a class="tool-doc-link" href="https://pydeseq2.readthedocs.io/" target="_blank" rel="noopener">pydeseq2.readthedocs.io</a>
+                                <span class="tool-citation">Muzellec B, et al. <em>Bioinformatics</em>, 2023. <a href="https://doi.org/10.1093/bioinformatics/btad547" target="_blank" rel="noopener">DOI: 10.1093/bioinformatics/btad547</a></span>
+                                <span class="tool-citation">Love MI, Huber W, Anders S. <em>Genome Biol.</em>, 2014. <a href="https://doi.org/10.1186/s13059-014-0550-8" target="_blank" rel="noopener">DOI: 10.1186/s13059-014-0550-8</a></span>
+                            </div>
+                            <div class="doc-item hidden" id="doc-edgepython">
+                                <span class="doc-label">edgePython docs</span>
+                                <a class="tool-doc-link" href="https://github.com/pachterlab/edgePython" target="_blank" rel="noopener">github.com/pachterlab/edgePython</a>
+                                <span class="tool-citation">Pachter L. <em>bioRxiv</em>, 2026. <a href="https://doi.org/10.64898/2026.02.16.706223" target="_blank" rel="noopener">DOI: 10.64898/2026.02.16.706223</a></span>
+                                <span class="tool-citation">Robinson MD, McCarthy DJ, Smyth GK. <em>Bioinformatics</em>, 2010. <a href="https://doi.org/10.1093/bioinformatics/btp616" target="_blank" rel="noopener">DOI: 10.1093/bioinformatics/btp616</a></span>
+                            </div>
+                        </div>
+
+                        <!-- Shared Parameters (Basic) -->
+                        <div class="params-section">
+                            <h3 class="params-header">Parameters</h3>
+                            <div class="param-group">
+                                <div class="form-group">
+                                    <label for="lfc-threshold">
+                                        Log2 Fold Change Threshold
+                                        <span class="info-icon">i<span class="tooltip">Minimum absolute log2 fold change to consider a gene as differentially expressed. Higher values are more stringent. A value of 1.0 means the gene must be at least 2-fold up or down.</span></span>
+                                    </label>
+                                    <input type="number" id="lfc-threshold" value="1.0" step="0.1" min="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="padj-threshold">
+                                        Adjusted P-value Threshold
+                                        <span class="info-icon">i<span class="tooltip">Maximum Benjamini-Hochberg adjusted p-value (FDR) to consider a gene significant. Lower values are more stringent. 0.05 means accepting a 5% false discovery rate.</span></span>
+                                    </label>
+                                    <input type="number" id="padj-threshold" value="0.05" step="0.01" min="0" max="1">
+                                </div>
+                            </div>
+
+                            <!-- edgePython-specific basic params -->
+                            <div class="tool-params hidden" id="edgepython-basic-params">
+                                <div class="param-group">
+                                    <div class="form-group">
+                                        <label for="edge-normalization">
+                                            Normalization Method
+                                            <span class="info-icon">i<span class="tooltip">How library sizes are normalized across samples. TMM (default) trims extreme fold changes and is robust for most RNA-seq data. RLE uses the median ratio method (similar to DESeq2).</span></span>
+                                        </label>
+                                        <select id="edge-normalization">
+                                            <option value="TMM" selected>TMM (Trimmed Mean of M-values)</option>
+                                            <option value="TMMwsp">TMMwsp (TMM with singleton pairing)</option>
+                                            <option value="RLE">RLE (Relative Log Expression)</option>
+                                            <option value="upperquartile">Upper Quartile</option>
+                                            <option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="edge-test-method">
+                                            Test Method
+                                            <span class="info-icon">i<span class="tooltip">Statistical test for differential expression. QL F-test (recommended) uses quasi-likelihood with empirical Bayes moderation for better small-sample performance. Exact test is a simpler pairwise comparison.</span></span>
+                                        </label>
+                                        <select id="edge-test-method">
+                                            <option value="qlf" selected>Quasi-likelihood F-test</option>
+                                            <option value="exact">Exact Test</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- edgePython Advanced Parameters -->
+                        <div class="params-section advanced-section hidden" id="edgepython-advanced-section">
+                            <h3 class="params-header advanced-header">
+                                Advanced
+                                <span class="advanced-warning">(be careful touching unless you know what you want here)</span>
+                            </h3>
+                            <div class="param-group">
+                                <div class="form-group">
+                                    <label for="edge-dispersion">
+                                        Dispersion Estimation
+                                        <span class="info-icon">i<span class="tooltip">How gene-level variability is estimated. Trended (default) fits a mean-variance trend across genes. Common uses a single dispersion for all genes. Tagwise estimates per-gene dispersion shrunk towards the trend.</span></span>
+                                    </label>
+                                    <select id="edge-dispersion">
+                                        <option value="trended" selected>Trended</option>
+                                        <option value="common">Common</option>
+                                        <option value="tagwise">Tagwise</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="edge-robust">
+                                        Robust Fitting
+                                        <span class="info-icon">i<span class="tooltip">Downweights outlier genes during GLM fitting. Recommended for datasets where some genes may have unusually high variance or influential observations.</span></span>
+                                    </label>
+                                    <select id="edge-robust">
+                                        <option value="true" selected>Enabled</option>
+                                        <option value="false">Disabled</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="edge-prior-df">
+                                        Prior Degrees of Freedom
+                                        <span class="info-icon">i<span class="tooltip">Controls the strength of empirical Bayes shrinkage for dispersion estimates. Higher values apply more shrinkage, stabilizing variance estimates for genes with few counts.</span></span>
+                                    </label>
+                                    <input type="number" id="edge-prior-df" value="10" step="1" min="1" max="50">
+                                </div>
+                                <div class="form-group">
+                                    <label for="edge-min-count">
+                                        Minimum Count Filter
+                                        <span class="info-icon">i<span class="tooltip">Genes with total counts across all samples below this threshold are filtered out before analysis. Removes very low-expressed genes that lack statistical power.</span></span>
+                                    </label>
+                                    <input type="number" id="edge-min-count" value="10" step="1" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Run Button -->
+                        <div class="deseq-controls">
+                            <button class="btn btn-primary btn-large" id="btn-run-deseq">
+                                <span class="btn-icon">🧬</span>
+                                <span id="btn-run-label">Run pyDESeq2 Analysis</span>
+                            </button>
+                        </div>
+
+                        <div class="analysis-status hidden" id="deseq-status">
+                            <div class="loading-spinner"></div>
+                            <span>Running analysis...</span>
+                        </div>
+
+                        <div class="results-summary hidden" id="deseq-summary">
+                            <h3>Results Summary</h3>
+                            <div class="summary-cards">
+                                <div class="summary-card">
+                                    <span class="card-value" id="total-genes">-</span>
+                                    <span class="card-label">Total Genes</span>
+                                </div>
+                                <div class="summary-card significant">
+                                    <span class="card-value" id="sig-genes">-</span>
+                                    <span class="card-label">Significant</span>
+                                </div>
+                                <div class="summary-card up">
+                                    <span class="card-value" id="up-genes">-</span>
+                                    <span class="card-label">Upregulated</span>
+                                </div>
+                                <div class="summary-card down">
+                                    <span class="card-value" id="down-genes">-</span>
+                                    <span class="card-label">Downregulated</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="results-table-section hidden" id="deseq-results-section">
+                            <h3>Results Table</h3>
+                            <p class="table-hint">Click column headers to sort. Use filters to search specific columns. Click a row to select that gene.</p>
+                            <div class="table-controls">
+                                <select id="filter-significance">
+                                    <option value="all">All Genes</option>
+                                    <option value="significant">Significant Only</option>
+                                    <option value="up">Upregulated</option>
+                                    <option value="down">Downregulated</option>
+                                </select>
+                                <button class="btn btn-small" id="btn-export-csv">Export CSV</button>
+                                <button class="btn btn-small" id="btn-export-selected">Export Selected</button>
+                            </div>
+                            <div id="deseq-results-table" class="tabulator-table"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Visualization Panel -->
+                <section class="panel hidden" id="panel-visualization">
+                    <div class="panel-header">
+                        <h2>Visualizations</h2>
+                        <p class="panel-description">Create interactive plots. Click on genes in the volcano plot to add them to boxplots.</p>
+                    </div>
+                    <div class="panel-content">
+                        <div class="viz-tabs">
+                            <button class="viz-tab active" data-viz="volcano">Volcano Plot</button>
+                            <button class="viz-tab" data-viz="boxplot">Boxplots</button>
+                            <button class="viz-tab" data-viz="heatmap">Heatmap</button>
+                            <button class="viz-tab" data-viz="pca">PCA</button>
+                            <button class="viz-tab" data-viz="gsea">Pathways</button>
+                        </div>
+
+                        <div class="viz-content">
+                            <!-- Volcano Plot -->
+                            <div class="viz-panel" id="viz-volcano">
+                                <div class="viz-controls">
+                                    <div class="control-group">
+                                        <label>LFC Threshold: <input type="number" id="volcano-lfc" value="1.0" step="0.1"></label>
+                                        <label>P-adj Threshold: <input type="number" id="volcano-padj" value="0.05" step="0.01"></label>
+                                        <button class="btn btn-small" id="btn-update-volcano">Update</button>
+                                    </div>
+                                    <div class="control-group-right">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="include-volcano"> Include in Script
+                                        </label>
+                                        <div class="plot-mode-switch" data-viz="volcano">
+                                            <button class="mode-btn active" data-mode="plotly">Plotly</button>
+                                            <button class="mode-btn" data-mode="python">Python</button>
+                                            <button class="mode-btn" data-mode="both">Both</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="switchable-plot-container show-plotly" id="volcano-plot-display">
+                                    <div class="plot-pane plot-pane-plotly">
+                                        <div class="plot-container" id="volcano-plot"></div>
+                                    </div>
+                                    <div class="plot-pane plot-pane-python">
+                                        <div class="plot-container mpl-plot" id="volcano-plot-mpl">
+                                            <div class="mpl-placeholder">Switch to Python or Both to generate</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Boxplot -->
+                            <div class="viz-panel hidden" id="viz-boxplot">
+                                <div class="viz-controls">
+                                    <div class="control-group">
+                                        <label>Normalization:
+                                            <select id="boxplot-norm">
+                                                <option value="log2">Log2(counts + 1)</option>
+                                                <option value="deseq2">DESeq2 Normalized</option>
+                                            </select>
+                                        </label>
+                                        <button class="btn btn-small" id="btn-update-boxplot">Update</button>
+                                    </div>
+                                    <div class="control-group-right">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="include-boxplot"> Include in Script
+                                        </label>
+                                        <div class="plot-mode-switch" data-viz="boxplot">
+                                            <button class="mode-btn active" data-mode="plotly">Plotly</button>
+                                            <button class="mode-btn" data-mode="python">Python</button>
+                                            <button class="mode-btn" data-mode="both">Both</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="selected-genes" id="selected-genes-display">
+                                    <span class="label">Selected Genes:</span>
+                                    <div class="gene-chips" id="gene-chips">
+                                        <span class="placeholder">Click genes on volcano plot to select</span>
+                                    </div>
+                                    <button class="btn btn-small btn-text" id="btn-clear-genes">Clear All</button>
+                                </div>
+                                <div class="switchable-plot-container show-plotly" id="boxplot-plot-display">
+                                    <div class="plot-pane plot-pane-plotly">
+                                        <div class="plot-container" id="boxplot-plot"></div>
+                                    </div>
+                                    <div class="plot-pane plot-pane-python">
+                                        <div class="plot-container mpl-plot" id="boxplot-plot-mpl">
+                                            <div class="mpl-placeholder">Switch to Python or Both to generate</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Heatmap -->
+                            <div class="viz-panel hidden" id="viz-heatmap">
+                                <div class="viz-controls">
+                                    <div class="control-group">
+                                        <label>Gene Selection:
+                                            <select id="heatmap-gene-selection">
+                                                <option value="variance">Top by Variance</option>
+                                                <option value="up">Top Upregulated</option>
+                                                <option value="down">Top Downregulated</option>
+                                                <option value="significant">Top Significant</option>
+                                                <option value="selected">Selected Genes</option>
+                                            </select>
+                                        </label>
+                                        <label>Top N Genes: <input type="number" id="heatmap-topn" value="50" min="10" max="200"></label>
+                                        <label>Scale:
+                                            <select id="heatmap-scale">
+                                                <option value="row">Row (Z-score)</option>
+                                                <option value="column">Column</option>
+                                                <option value="none">None</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div class="control-group">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="heatmap-cluster-cols" checked> Cluster Columns
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="heatmap-cluster-rows" checked> Cluster Rows
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="heatmap-show-dendrogram" checked> Show Dendrogram
+                                        </label>
+                                        <button class="btn btn-small btn-primary" id="btn-update-heatmap">Generate Heatmap</button>
+                                    </div>
+                                    <div class="control-group-right">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="include-heatmap"> Include in Script
+                                        </label>
+                                        <div class="plot-mode-switch" data-viz="heatmap">
+                                            <button class="mode-btn" data-mode="plotly">Plotly</button>
+                                            <button class="mode-btn active" data-mode="python">Python</button>
+                                            <button class="mode-btn" data-mode="both">Both</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="switchable-plot-container show-python" id="heatmap-plot-display">
+                                    <div class="plot-pane plot-pane-plotly">
+                                        <div class="plot-container" id="heatmap-plot-plotly">
+                                            <div class="mpl-placeholder">Click "Generate Heatmap" to create</div>
+                                        </div>
+                                    </div>
+                                    <div class="plot-pane plot-pane-python">
+                                        <div class="plot-container mpl-plot-full" id="heatmap-plot-mpl">
+                                            <div class="mpl-placeholder">Click "Generate Heatmap" to create the plot</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- PCA Plot -->
+                            <div class="viz-panel hidden" id="viz-pca">
+                                <div class="viz-controls">
+                                    <div class="control-group">
+                                        <label>Color by:
+                                            <select id="pca-color-by">
+                                                <option value="condition">condition</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div class="control-group-right">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="include-pca"> Include in Script
+                                        </label>
+                                        <div class="plot-mode-switch" data-viz="pca">
+                                            <button class="mode-btn active" data-mode="plotly">Plotly</button>
+                                            <button class="mode-btn" data-mode="python">Python</button>
+                                            <button class="mode-btn" data-mode="both">Both</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="pca-options">
+                                    <label>Data:
+                                        <select id="pca-normalization">
+                                            <option value="deseq2">DESeq2 Normalized</option>
+                                            <option value="log2" selected>Log2(counts + 1)</option>
+                                            <option value="raw">Raw Counts</option>
+                                        </select>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="pca-center" checked> Center
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="pca-scale" checked> Scale
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="pca-show-labels" checked> Show Sample Labels
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="pca-use-selected-genes"> Selected Genes Only
+                                    </label>
+                                </div>
+                                <div class="pca-info" id="pca-variance-info"></div>
+                                <div class="switchable-plot-container show-plotly" id="pca-plot-display">
+                                    <div class="plot-pane plot-pane-plotly">
+                                        <div class="plot-container" id="pca-plot-plotly">
+                                            <div class="mpl-placeholder">Run analysis to generate PCA</div>
+                                        </div>
+                                    </div>
+                                    <div class="plot-pane plot-pane-python">
+                                        <div class="plot-container mpl-plot-full" id="pca-plot-mpl">
+                                            <div class="mpl-placeholder">Select options and change Color by to generate PCA</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- GSEA/Pathway Analysis -->
+                            <div class="viz-panel hidden" id="viz-gsea">
+                                <div class="viz-controls">
+                                    <div class="control-group">
+                                        <label>Gene Set Library:
+                                            <select id="gsea-gene-set-library">
+                                                <option value="KEGG_2021_Human">KEGG 2021 Human</option>
+                                                <option value="GO_Biological_Process_2021">GO Biological Process 2021</option>
+                                                <option value="GO_Molecular_Function_2021">GO Molecular Function 2021</option>
+                                                <option value="Reactome_2022">Reactome 2022</option>
+                                                <option value="MSigDB_Hallmark_2020">MSigDB Hallmark 2020</option>
+                                                <option value="WikiPathway_2021_Human">WikiPathway 2021 Human</option>
+                                            </select>
+                                        </label>
+                                        <label>Method:
+                                            <select id="gsea-method-select">
+                                                <option value="prerank">Prerank GSEA</option>
+                                                <option value="enrichr">Enrichr (ORA)</option>
+                                            </select>
+                                        </label>
+                                        <button class="btn btn-small btn-primary" id="btn-run-gsea-viz">Run Pathway Analysis</button>
+                                    </div>
+                                    <div class="control-group-right">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="include-gsea-viz"> Include in Script
+                                        </label>
+                                        <div class="plot-mode-switch" data-viz="gsea">
+                                            <button class="mode-btn" data-mode="plotly">Plotly</button>
+                                            <button class="mode-btn active" data-mode="python">Python</button>
+                                            <button class="mode-btn" data-mode="both">Both</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="gsea-status hidden" id="gsea-viz-status">
+                                    <div class="loading-spinner"></div>
+                                    <span>Running pathway analysis...</span>
+                                </div>
+                                <div class="gsea-results-viz hidden" id="gsea-viz-results">
+                                    <div class="gsea-plot-controls">
+                                        <label>Top N Pathways: <input type="number" id="gsea-viz-topn" value="15" min="5" max="50"></label>
+                                        <button class="btn btn-small" id="btn-refresh-gsea-viz-plot">Refresh Plot</button>
+                                    </div>
+                                    <div class="switchable-plot-container show-python" id="gsea-plot-display">
+                                        <div class="plot-pane plot-pane-plotly">
+                                            <div class="plot-container" id="gsea-plot-plotly">
+                                                <div class="mpl-placeholder">Run analysis to generate</div>
+                                            </div>
+                                        </div>
+                                        <div class="plot-pane plot-pane-python">
+                                            <div class="plot-container mpl-plot-full" id="gsea-viz-plot-mpl">
+                                                <div class="mpl-placeholder">Running analysis...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <h4>Pathway Results Table</h4>
+                                    <div id="gsea-viz-table" class="tabulator-table"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- GSEA Panel - Now redirect to visualization -->
+                <section class="panel hidden" id="panel-gsea">
+                    <div class="panel-header">
+                        <h2>Pathway Analysis (GSEA)</h2>
+                        <p class="panel-description">Run gene set enrichment analysis to identify enriched pathways.</p>
+                    </div>
+                    <div class="panel-content">
+                        <div class="gsea-controls">
+                            <div class="form-group">
+                                <label for="gene-set-library">Gene Set Library</label>
+                                <select id="gene-set-library">
+                                    <option value="KEGG_2021_Human">KEGG 2021 Human</option>
+                                    <option value="GO_Biological_Process_2021">GO Biological Process 2021</option>
+                                    <option value="GO_Molecular_Function_2021">GO Molecular Function 2021</option>
+                                    <option value="Reactome_2022">Reactome 2022</option>
+                                    <option value="MSigDB_Hallmark_2020">MSigDB Hallmark 2020</option>
+                                    <option value="WikiPathway_2021_Human">WikiPathway 2021 Human</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="gsea-method">Method</label>
+                                <select id="gsea-method">
+                                    <option value="prerank">Prerank GSEA</option>
+                                    <option value="enrichr">Enrichr (ORA)</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" id="btn-run-gsea">
+                                <span class="btn-icon">🔬</span>
+                                Run Pathway Analysis
+                            </button>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="include-gsea"> Include in Script
+                            </label>
+                        </div>
+
+                        <div class="analysis-status hidden" id="gsea-status">
+                            <div class="loading-spinner"></div>
+                            <span>Running pathway analysis...</span>
+                        </div>
+
+                        <div class="gsea-results hidden" id="gsea-results">
+                            <div class="gsea-plot-controls">
+                                <label>Top N Pathways: <input type="number" id="gsea-topn" value="15" min="5" max="50"></label>
+                                <button class="btn btn-small" id="btn-refresh-gsea-plot">Refresh Plot</button>
+                            </div>
+                            <div class="plot-container mpl-plot-full" id="gsea-plot-mpl">
+                                <div class="mpl-placeholder">Running analysis...</div>
+                            </div>
+                            <h4>Pathway Results Table</h4>
+                            <div id="gsea-table" class="tabulator-table"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Script Panel (Step 4) -->
+                <section class="panel hidden" id="panel-script">
+                    <div class="panel-header">
+                        <h2>Export Analysis Script</h2>
+                        <p class="panel-description">Generate a reproducible Python script containing all your analysis steps.</p>
+                    </div>
+                    <div class="panel-content">
+                        <div class="script-options">
+                            <h3>Include in Script</h3>
+                            <div class="script-checkboxes">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="script-include-data-loading" checked> Data Loading
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="script-include-deseq2" checked> Differential Testing
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="script-include-volcano"> Volcano Plot
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="script-include-boxplot"> Gene Boxplots
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="script-include-heatmap"> Heatmap
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="script-include-gsea"> GSEA Pathway Analysis
+                                </label>
+                            </div>
+                        </div>
+                        <div class="script-actions-bar">
+                            <button class="btn btn-primary" id="btn-copy-script">
+                                Copy to Clipboard
+                            </button>
+                            <button class="btn btn-secondary" id="btn-save-script">
+                                Save as File
+                            </button>
+                        </div>
+                        <div class="script-preview">
+                            <h3>Generated Script Preview</h3>
+                            <div class="script-code-container">
+                                <pre><code id="generated-script"># Load data and run analysis to generate script...</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="env-export-section">
+                            <h3>Environment / Dependencies</h3>
+                            <p class="panel-description">Copy the environment definition to recreate this exact Python environment.</p>
+                            <div class="env-format-tabs">
+                                <button class="env-tab active" data-env="requirements">requirements.txt</button>
+                                <button class="env-tab" data-env="conda">conda environment.yml</button>
+                            </div>
+                            <div class="env-actions-bar">
+                                <button class="btn btn-small btn-primary" id="btn-load-env">Load Environment Info</button>
+                                <button class="btn btn-small" id="btn-copy-env">Copy to Clipboard</button>
+                            </div>
+                            <div class="env-code-container">
+                                <pre><code id="env-output"># Click "Load Environment Info" to fetch package list...</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Citations Panel (Step 5) -->
+                <section class="panel hidden" id="panel-citations">
+                    <div class="panel-header">
+                        <h2>Citations</h2>
+                        <p class="panel-description">Reference the tools used in your analysis. Formatted for Nature-style journals.</p>
+                    </div>
+                    <div class="panel-content">
+                        <div class="citations-actions">
+                            <button class="btn btn-primary" id="btn-download-bib">
+                                Download .bib (BibTeX)
+                            </button>
+                            <button class="btn btn-secondary" id="btn-copy-citations">
+                                Copy Citations
+                            </button>
+                        </div>
+
+                        <div class="citations-list">
+                            <div class="citation-card" id="cite-kallisto">
+                                <h4>kallisto</h4>
+                                <p class="citation-text">Bray, N. L., Pimentel, H., Melsted, P. &amp; Pachter, L. Near-optimal probabilistic RNA-seq quantification. <em>Nat. Biotechnol.</em> <strong>34</strong>, 525–527 (2016).</p>
+                                <a class="citation-doi" href="https://doi.org/10.1038/nbt.3519" target="_blank" rel="noopener">https://doi.org/10.1038/nbt.3519</a>
+                            </div>
+
+                            <div class="citation-card" id="cite-pydeseq2">
+                                <h4>pyDESeq2</h4>
+                                <p class="citation-text">Muzellec, B., Telenczuk, M., Cabeli, V. &amp; Andreux, M. PyDESeq2: a python package for bulk RNA-seq differential expression analysis. <em>Bioinformatics</em> <strong>39</strong>, btad547 (2023).</p>
+                                <a class="citation-doi" href="https://doi.org/10.1093/bioinformatics/btad547" target="_blank" rel="noopener">https://doi.org/10.1093/bioinformatics/btad547</a>
+                            </div>
+
+                            <div class="citation-card" id="cite-deseq2">
+                                <h4>DESeq2</h4>
+                                <p class="citation-text">Love, M. I., Huber, W. &amp; Anders, S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. <em>Genome Biol.</em> <strong>15</strong>, 550 (2014).</p>
+                                <a class="citation-doi" href="https://doi.org/10.1186/s13059-014-0550-8" target="_blank" rel="noopener">https://doi.org/10.1186/s13059-014-0550-8</a>
+                            </div>
+
+                            <div class="citation-card" id="cite-edgestar">
+                                <h4>edge*</h4>
+                                <p class="citation-text">Pachter, L. Differential analysis of genomics count data with edge*. <em>bioRxiv</em> (2026).</p>
+                                <a class="citation-doi" href="https://doi.org/10.64898/2026.02.16.706223" target="_blank" rel="noopener">https://doi.org/10.64898/2026.02.16.706223</a>
+                            </div>
+
+                            <div class="citation-card" id="cite-edger">
+                                <h4>edgeR</h4>
+                                <p class="citation-text">Robinson, M. D., McCarthy, D. J. &amp; Smyth, G. K. edgeR: a Bioconductor package for differential expression analysis of digital gene expression data. <em>Bioinformatics</em> <strong>26</strong>, 139–140 (2010).</p>
+                                <a class="citation-doi" href="https://doi.org/10.1093/bioinformatics/btp616" target="_blank" rel="noopener">https://doi.org/10.1093/bioinformatics/btp616</a>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <span id="status-message">Ready</span>
+            <span id="selected-count">Selected: 0 genes</span>
+            <span id="analysis-status">Analysis: Not run</span>
+        </footer>
+    </div>
+
+    <!-- Load application scripts -->
+    <!-- Web bridge must load first: provides window.api in browser mode, no-op in Electron -->
+    <script src="utils/webBridge.js"></script>
+    <script src="state/store.js"></script>
+    <script src="utils/pythonBridge.js"></script>
+    <script src="components/VolcanoPlot.js"></script>
+    <script src="components/BoxPlot.js"></script>
+    <script src="components/HeatmapPlot.js"></script>
+    <script src="components/GSEAPlot.js"></script>
+    <script src="components/ScriptPanel.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>
