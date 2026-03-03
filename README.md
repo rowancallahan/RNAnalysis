@@ -1,3 +1,3 @@
 # RNAnalysis
 
-![RNAnalysis App](download.jpg)
+<img src="download.jpg" alt="RNAnalysis App" width="600">
