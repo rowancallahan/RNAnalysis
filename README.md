@@ -22,7 +22,7 @@ That being said I currently can't make any guarantees about weird behavior so if
 
 All that being said if you use RNAnalysis in your research (especially after I have verified things) and find it is helpful or useful.
 
-Please consider giving me a citation!
+Please consider giving me a citation (or a star :) )!
 
 ```bibtex
 @software{callahan2026rnanalysis,
