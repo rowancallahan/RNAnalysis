@@ -1,3 +1,3 @@
 # RNAnalysis
 
-![Volcano Plot](volcano_screenshot.png)
+![RNAnalysis App](download.jpg)
