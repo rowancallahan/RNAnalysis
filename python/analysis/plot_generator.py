@@ -248,11 +248,10 @@ class PlotGenerator:
         else:
             ylabel = 'Normalized Counts'
 
-        # Melt for seaborn - reset index to avoid ambiguity
+        # Build long-form data
         expr = expr.reset_index(drop=True)
         expr['sample_id'] = normalized_counts.index.tolist()
 
-        # Add group column from metadata
         sample_to_group = metadata[group_column].to_dict()
         expr[group_column] = expr['sample_id'].map(sample_to_group)
 
@@ -262,41 +261,16 @@ class PlotGenerator:
             value_name='expression'
         )
 
-        # Create figure
-        n_genes = len(valid_genes)
-        fig_width = max(8, n_genes * 2.5)
-        fig, ax = plt.subplots(figsize=(fig_width, 7))
-
-        # Clean white background
-        ax.set_facecolor('white')
-        fig.patch.set_facecolor('white')
-
-        # Color palette - muted pastels
-        unique_groups = metadata[group_column].unique()
-        if 'control' in unique_groups and 'treatment' in unique_groups:
+        # Color palette
+        unique_groups = sorted(metadata[group_column].unique())
+        if set(unique_groups) == {'control', 'treatment'}:
             palette = {'control': '#7BA3C9', 'treatment': '#C97B7B'}
         else:
-            palette = dict(zip(unique_groups, sns.color_palette('pastel', len(unique_groups))))
+            palette = dict(zip(unique_groups,
+                               [plt.matplotlib.colors.rgb2hex(c)
+                                for c in sns.color_palette('pastel', len(unique_groups))]))
 
-        # Boxplot with thicker lines
-        box_props = dict(linewidth=2)
-        whisker_props = dict(linewidth=2)
-        cap_props = dict(linewidth=2)
-        median_props = dict(linewidth=2.5, color='black')
-
-        sns.boxplot(
-            data=plot_data, x='gene', y='expression', hue=group_column,
-            ax=ax, palette=palette, width=0.6, linewidth=2,
-            boxprops=box_props, whiskerprops=whisker_props,
-            capprops=cap_props, medianprops=median_props
-        )
-        sns.stripplot(
-            data=plot_data, x='gene', y='expression', hue=group_column,
-            ax=ax, dodge=True, alpha=0.7, size=6, legend=False,
-            edgecolor='#333333', linewidth=0.5
-        )
-
-        # Add significance stars
+        # Significance helper
         def pvalue_to_stars(pval):
             if pd.isna(pval):
                 return ''
@@ -308,40 +282,67 @@ class PlotGenerator:
                 return '*'
             return 'ns'
 
-        if results is not None:
-            ymax = ax.get_ylim()[1]
-            for i, gene in enumerate(valid_genes):
-                if gene in results.index:
-                    padj = results.loc[gene, 'padj']
-                    stars = pvalue_to_stars(padj)
-                    if stars:
-                        ax.text(i, ymax * 0.97, stars, ha='center', va='top',
-                               fontsize=14, fontweight='bold')
+        n_genes = len(valid_genes)
 
-        # Styling
-        ax.set_xlabel('Gene', fontsize=14, fontweight='bold')
-        ax.set_ylabel(ylabel, fontsize=14, fontweight='bold')
-        ax.set_title('Gene Expression by Condition', fontsize=16, fontweight='bold', pad=15)
+        # --- One subplot per gene, stacked vertically ---
+        fig_height = max(4, n_genes * 4)
+        fig, axes = plt.subplots(n_genes, 1, figsize=(8, fig_height),
+                                 squeeze=False)
+        fig.patch.set_facecolor('white')
 
-        # Legend
-        legend = ax.legend(title=group_column.capitalize(), loc='upper right',
-                          frameon=True, fancybox=False, edgecolor='#333333', fontsize=11)
-        legend.get_frame().set_linewidth(1.5)
-        legend.get_title().set_fontweight('bold')
+        for gene_idx, gene in enumerate(valid_genes):
+            ax = axes[gene_idx, 0]
+            ax.set_facecolor('white')
+            gene_data = plot_data[plot_data['gene'] == gene].copy()
 
-        plt.xticks(rotation=45, ha='right', fontsize=12)
+            # Boxplot — no outlier markers (fliersize=0), jitter handles them
+            sns.boxplot(
+                data=gene_data, x=group_column, y='expression',
+                order=unique_groups, ax=ax, palette=palette, width=0.5,
+                linewidth=2, fliersize=0,
+                medianprops=dict(linewidth=2.5, color='black')
+            )
 
-        # Clean up spines
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_linewidth(2)
-        ax.spines['bottom'].set_linewidth(2)
-        ax.spines['left'].set_color('#333333')
-        ax.spines['bottom'].set_color('#333333')
+            # Stripplot — use palette so each group's points match its box color
+            sns.stripplot(
+                data=gene_data, x=group_column, y='expression',
+                order=unique_groups, ax=ax, palette=palette,
+                dodge=False, alpha=0.7, size=6, jitter=0.15,
+                edgecolor='#333333', linewidth=0.5
+            )
 
-        ax.tick_params(axis='both', which='major', labelsize=12, width=2, length=6)
+            # Title with significance stars
+            title = gene
+            if results is not None and gene in results.index:
+                padj = results.loc[gene, 'padj']
+                stars = pvalue_to_stars(padj)
+                if stars:
+                    title = f'{gene}  {stars}'
+            ax.set_title(title, fontsize=14, fontweight='bold', pad=8)
 
-        plt.tight_layout()
+            ax.set_xlabel('')
+            ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
+
+            # Spine styling
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_linewidth(2)
+            ax.spines['bottom'].set_linewidth(2)
+            ax.spines['left'].set_color('#333333')
+            ax.spines['bottom'].set_color('#333333')
+            ax.tick_params(axis='both', which='major', labelsize=11, width=2, length=6)
+
+        # Shared legend at the top
+        from matplotlib.patches import Patch
+        handles = [Patch(facecolor=palette[g], edgecolor='#333333', label=g)
+                   for g in unique_groups]
+        fig.legend(handles=handles, title=group_column.capitalize(),
+                   loc='upper center', ncol=len(unique_groups),
+                   frameon=True, fancybox=False, edgecolor='#333333',
+                   fontsize=11, title_fontsize=12,
+                   bbox_to_anchor=(0.5, 1.0))
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
 
         # Convert to output format
         if output_format == 'svg':
@@ -612,6 +613,7 @@ class PlotGenerator:
         center: bool = True,
         scale: bool = True,
         show_labels: bool = True,
+        show_legend: bool = True,
         n_components: int = 2,
         output_format: str = 'svg'
     ) -> Dict:
@@ -719,10 +721,13 @@ class PlotGenerator:
                         alpha=0.7
                     )
 
-            legend = ax.legend(title=color_by.capitalize(), loc='best',
-                              frameon=True, fancybox=False, edgecolor='#333333', fontsize=11)
-            legend.get_frame().set_linewidth(1.5)
-            legend.get_title().set_fontweight('bold')
+            if show_legend:
+                legend = ax.legend(title=color_by.capitalize(), loc='best',
+                                  frameon=True, fancybox=False, edgecolor='#333333', fontsize=11)
+                legend.get_frame().set_linewidth(1.5)
+                legend.get_title().set_fontweight('bold')
+            else:
+                ax.get_legend().remove() if ax.get_legend() else None
         else:
             ax.scatter(pca_df['PC1'], pca_df['PC2'], c='#3498DB', s=120,
                       alpha=0.8, edgecolors='#333333', linewidths=1.5)
@@ -786,7 +791,3 @@ class PlotGenerator:
             'metadata_columns': list(metadata.columns),
             'sample_data': sample_data,
         }
-
-
-# Singleton instance
-plot_generator = PlotGenerator()

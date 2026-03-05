@@ -17,6 +17,19 @@ contextBridge.exposeInMainWorld('api', {
     runPythonSetup: () => ipcRenderer.invoke('run-python-setup'),
     startPythonBackend: () => ipcRenderer.invoke('start-python-backend'),
 
+    // R environment & GEO/recount3
+    checkRSetup: () => ipcRenderer.invoke('check-r-setup'),
+    runRSetup: () => ipcRenderer.invoke('run-r-setup'),
+    runRScript: (scriptName, args) => ipcRenderer.invoke('run-r-script', scriptName, args),
+    onRSetupProgress: (callback) => {
+        ipcRenderer.on('r-setup-progress', (event, data) => callback(data));
+        return () => ipcRenderer.removeListener('r-setup-progress', callback);
+    },
+    onRScriptProgress: (callback) => {
+        ipcRenderer.on('r-script-progress', (event, data) => callback(data));
+        return () => ipcRenderer.removeListener('r-script-progress', callback);
+    },
+
     // Event listeners
     onPythonReady: (callback) => {
         ipcRenderer.on('python-ready', callback);

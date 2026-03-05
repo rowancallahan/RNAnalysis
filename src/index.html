@@ -255,7 +255,70 @@
                             <p class="example-data-hint">No counts? <a href="#" id="btn-load-example">Load example data by clicking me</a></p>
                         </div>
 
+                        <!-- GEO / recount3 Fetch Section -->
+                        <div class="geo-fetch-section">
+                            <div class="section-divider">
+                                <span class="divider-line"></span>
+                                <span class="divider-text">or fetch from GEO / recount3</span>
+                                <span class="divider-line"></span>
+                            </div>
+
+                            <div class="geo-input-row">
+                                <input type="text" id="geo-id-input" class="geo-input" placeholder="Enter GEO ID (GSE...) or SRA ID (SRP...)">
+                                <button class="btn btn-secondary geo-btn" id="btn-fetch-recount3" title="Fetch uniformly-processed RNA-seq counts + metadata from recount3">
+                                    <span class="btn-icon">🧬</span>
+                                    Fetch recount3
+                                </button>
+                                <button class="btn btn-secondary geo-btn" id="btn-fetch-geo-meta" title="Fetch sample metadata (+ expression if available) from GEO">
+                                    <span class="btn-icon">📋</span>
+                                    Fetch GEO Metadata
+                                </button>
+                                <button class="btn btn-secondary geo-btn" id="btn-fetch-geo-counts" title="Download raw count matrix from GEO supplementary files">
+                                    <span class="btn-icon">📊</span>
+                                    Fetch GEO Counts
+                                </button>
+                            </div>
+
+                            <!-- R setup overlay (shown only when R is not installed) -->
+                            <div class="r-setup-overlay" id="r-setup-overlay" style="display: none;">
+                                <div class="r-setup-card">
+                                    <p class="r-setup-message">R environment required for GEO/recount3 features.</p>
+                                    <button class="btn btn-primary" id="btn-install-r">Install R Environment (~230 MB)</button>
+                                    <div class="r-setup-progress" id="r-setup-progress" style="display: none;">
+                                        <div class="setup-progress-container">
+                                            <div class="setup-progress-bar" id="r-setup-progress-bar" style="width: 0%"></div>
+                                        </div>
+                                        <p class="r-setup-status" id="r-setup-status">Preparing...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Fetch progress -->
+                            <div class="geo-fetch-status" id="geo-fetch-status" style="display: none;">
+                                <div class="geo-spinner"></div>
+                                <span id="geo-fetch-message">Fetching data...</span>
+                            </div>
+
+                            <!-- Inline status for GEO/recount3 tools -->
+                            <div class="tool-status-msg" id="geo-tool-status">
+                                <div class="status-icon"></div>
+                                <span class="status-text"></span>
+                                <button class="status-dismiss" title="Dismiss">&times;</button>
+                            </div>
+                        </div>
+
                         <div class="data-preview" id="data-preview" style="display: none;">
+                            <!-- Sample match status -->
+                            <div class="tool-status-msg" id="sample-match-status">
+                                <div class="status-icon"></div>
+                                <span class="status-text"></span>
+                                <button class="status-dismiss" title="Dismiss">&times;</button>
+                            </div>
+                            <div id="sample-match-action" style="display: none;">
+                                <span id="sample-match-suggestion"></span>
+                                <button class="btn btn-secondary btn-small" id="btn-remap-samples">Use this column</button>
+                            </div>
+
                             <div class="preview-section">
                                 <h3>Count Matrix</h3>
                                 <div class="data-info" id="counts-info"></div>
@@ -338,6 +401,13 @@
                                         <span class="info-icon">i<span class="tooltip">Maximum Benjamini-Hochberg adjusted p-value (FDR) to consider a gene significant. Lower values are more stringent. 0.05 means accepting a 5% false discovery rate.</span></span>
                                     </label>
                                     <input type="number" id="padj-threshold" value="0.05" step="0.01" min="0" max="1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="deseq-min-count">
+                                        Minimum Count Filter
+                                        <span class="info-icon">i<span class="tooltip">Genes with total counts across all samples below this threshold are filtered out before analysis. Removes very low-expressed genes that lack statistical power. Set to 0 to disable filtering.</span></span>
+                                    </label>
+                                    <input type="number" id="deseq-min-count" value="10" step="1" min="0">
                                 </div>
                             </div>
 
@@ -426,7 +496,14 @@
 
                         <div class="analysis-status hidden" id="deseq-status">
                             <div class="loading-spinner"></div>
-                            <span>Running analysis...</span>
+                            <span id="deseq-status-text">Running analysis...</span>
+                        </div>
+
+                        <!-- Inline status for analysis -->
+                        <div class="tool-status-msg" id="analysis-tool-status">
+                            <div class="status-icon"></div>
+                            <span class="status-text"></span>
+                            <button class="status-dismiss" title="Dismiss">&times;</button>
                         </div>
 
                         <div class="results-summary hidden" id="deseq-summary">
@@ -656,6 +733,9 @@
                                         <input type="checkbox" id="pca-show-labels" checked> Show Sample Labels
                                     </label>
                                     <label class="checkbox-label">
+                                        <input type="checkbox" id="pca-show-legend" checked> Show Legend
+                                    </label>
+                                    <label class="checkbox-label">
                                         <input type="checkbox" id="pca-use-selected-genes"> Selected Genes Only
                                     </label>
                                 </div>
@@ -732,60 +812,6 @@
                                     <div id="gsea-viz-table" class="tabulator-table"></div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- GSEA Panel - Now redirect to visualization -->
-                <section class="panel hidden" id="panel-gsea">
-                    <div class="panel-header">
-                        <h2>Pathway Analysis (GSEA)</h2>
-                        <p class="panel-description">Run gene set enrichment analysis to identify enriched pathways.</p>
-                    </div>
-                    <div class="panel-content">
-                        <div class="gsea-controls">
-                            <div class="form-group">
-                                <label for="gene-set-library">Gene Set Library</label>
-                                <select id="gene-set-library">
-                                    <option value="KEGG_2021_Human">KEGG 2021 Human</option>
-                                    <option value="GO_Biological_Process_2021">GO Biological Process 2021</option>
-                                    <option value="GO_Molecular_Function_2021">GO Molecular Function 2021</option>
-                                    <option value="Reactome_2022">Reactome 2022</option>
-                                    <option value="MSigDB_Hallmark_2020">MSigDB Hallmark 2020</option>
-                                    <option value="WikiPathway_2021_Human">WikiPathway 2021 Human</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="gsea-method">Method</label>
-                                <select id="gsea-method">
-                                    <option value="prerank">Prerank GSEA</option>
-                                    <option value="enrichr">Enrichr (ORA)</option>
-                                </select>
-                            </div>
-                            <button class="btn btn-primary" id="btn-run-gsea">
-                                <span class="btn-icon">🔬</span>
-                                Run Pathway Analysis
-                            </button>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="include-gsea"> Include in Script
-                            </label>
-                        </div>
-
-                        <div class="analysis-status hidden" id="gsea-status">
-                            <div class="loading-spinner"></div>
-                            <span>Running pathway analysis...</span>
-                        </div>
-
-                        <div class="gsea-results hidden" id="gsea-results">
-                            <div class="gsea-plot-controls">
-                                <label>Top N Pathways: <input type="number" id="gsea-topn" value="15" min="5" max="50"></label>
-                                <button class="btn btn-small" id="btn-refresh-gsea-plot">Refresh Plot</button>
-                            </div>
-                            <div class="plot-container mpl-plot-full" id="gsea-plot-mpl">
-                                <div class="mpl-placeholder">Running analysis...</div>
-                            </div>
-                            <h4>Pathway Results Table</h4>
-                            <div id="gsea-table" class="tabulator-table"></div>
                         </div>
                     </div>
                 </section>
@@ -899,6 +925,18 @@
                                 <p class="citation-text">Robinson, M. D., McCarthy, D. J. &amp; Smyth, G. K. edgeR: a Bioconductor package for differential expression analysis of digital gene expression data. <em>Bioinformatics</em> <strong>26</strong>, 139–140 (2010).</p>
                                 <a class="citation-doi" href="https://doi.org/10.1093/bioinformatics/btp616" target="_blank" rel="noopener">https://doi.org/10.1093/bioinformatics/btp616</a>
                             </div>
+
+                            <div class="citation-card" id="cite-recount3">
+                                <h4>recount3</h4>
+                                <p class="citation-text">Wilks, C. <em>et al.</em> recount3: summaries and queries for large-scale RNA-seq expression and splicing. <em>Genome Biol.</em> <strong>22</strong>, 323 (2021).</p>
+                                <a class="citation-doi" href="https://doi.org/10.1186/s13059-021-02533-6" target="_blank" rel="noopener">https://doi.org/10.1186/s13059-021-02533-6</a>
+                            </div>
+
+                            <div class="citation-card" id="cite-geoquery">
+                                <h4>GEOquery</h4>
+                                <p class="citation-text">Davis, S. &amp; Meltzer, P. S. GEOquery: a bridge between the Gene Expression Omnibus (GEO) and BioConductor. <em>Bioinformatics</em> <strong>23</strong>, 1846–1847 (2007).</p>
+                                <a class="citation-doi" href="https://doi.org/10.1093/bioinformatics/btm254" target="_blank" rel="noopener">https://doi.org/10.1093/bioinformatics/btm254</a>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -920,8 +958,6 @@
     <script src="utils/pythonBridge.js"></script>
     <script src="components/VolcanoPlot.js"></script>
     <script src="components/BoxPlot.js"></script>
-    <script src="components/HeatmapPlot.js"></script>
-    <script src="components/GSEAPlot.js"></script>
     <script src="components/ScriptPanel.js"></script>
     <script src="renderer.js"></script>
 </body>

@@ -157,15 +157,6 @@ class Store {
     }
 
     /**
-     * Toggle include in script flag
-     */
-    toggleInclude(key) {
-        this.state.includeInScript[key] = !this.state.includeInScript[key];
-        this.emit('includeInScript', this.state.includeInScript);
-        this.emit('change', { key: 'includeInScript', value: this.state.includeInScript });
-    }
-
-    /**
      * Set include in script flag
      */
     setInclude(key, value) {

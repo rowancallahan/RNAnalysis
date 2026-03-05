@@ -276,5 +276,4 @@ module.exports = {
     setupPythonEnvironment,
     isPythonSetUp,
     getPythonBinPath,
-    getAssetInfo,
 };

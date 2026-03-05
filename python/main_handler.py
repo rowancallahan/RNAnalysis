@@ -7,6 +7,7 @@ Receives JSON commands from Electron via stdin and returns JSON results via stdo
 import os
 import sys
 import json
+import math
 import traceback
 from typing import Any, Dict
 
@@ -51,13 +52,26 @@ class AppState:
 state = AppState()
 
 
+def _sanitize_for_json(obj):
+    """Recursively replace NaN/Infinity float values with None for valid JSON."""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
+
 def send_response(response_id: int, data: Any = None, error: str = None):
     """Send JSON response to stdout."""
     response = {'id': response_id}
     if error:
         response['error'] = error
     else:
-        response['data'] = data
+        response['data'] = _sanitize_for_json(data)
     print(json.dumps(response), flush=True)
 
 
@@ -115,6 +129,158 @@ def handle_load_metadata(params: Dict) -> Dict:
     }
 
 
+def handle_check_sample_match(params: Dict) -> Dict:
+    """Check if counts and metadata sample IDs match up."""
+    if state.counts is None or state.metadata is None:
+        return {'status': 'incomplete', 'message': 'Need both counts and metadata loaded'}
+
+    count_samples = set(state.counts.columns)
+    meta_samples = set(state.metadata.index)
+
+    common = count_samples & meta_samples
+    counts_only = count_samples - meta_samples
+    meta_only = meta_samples - count_samples
+
+    if len(common) == len(count_samples) and len(common) == len(meta_samples):
+        return {
+            'status': 'match',
+            'common': len(common),
+            'message': f'All {len(common)} samples match between counts and metadata'
+        }
+
+    if len(common) > 0 and len(common) >= min(len(count_samples), len(meta_samples)) * 0.8:
+        return {
+            'status': 'match',
+            'common': len(common),
+            'message': f'{len(common)} of {len(count_samples)} count samples match metadata ({len(counts_only)} unmatched will be ignored)'
+        }
+
+    # Try to find a metadata column that matches count sample IDs
+    best_col = None
+    best_overlap = 0
+    for col in state.metadata.columns:
+        col_vals = set(state.metadata[col].astype(str))
+        overlap = len(count_samples & col_vals)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_col = col
+
+    result = {
+        'status': 'partial' if len(common) > 0 else 'mismatch',
+        'common': len(common),
+        'counts_only': len(counts_only),
+        'meta_only': len(meta_only),
+        'counts_samples': sorted(list(counts_only))[:5],
+        'meta_samples': sorted(list(meta_only))[:5],
+    }
+
+    if best_col and best_overlap > len(common):
+        result['suggested_column'] = best_col
+        result['suggested_overlap'] = best_overlap
+        result['message'] = (
+            f'{len(common)} samples match by index. '
+            f'Column "{best_col}" matches {best_overlap} count samples — '
+            f'try setting it as the sample ID column.'
+        )
+    elif len(common) > 0:
+        result['message'] = (
+            f'{len(common)} of {len(count_samples)} count samples found in metadata. '
+            f'{len(counts_only)} count samples missing from metadata.'
+        )
+    else:
+        result['message'] = (
+            f'No sample IDs match between counts ({len(count_samples)} samples) '
+            f'and metadata ({len(meta_samples)} samples). '
+            f'The counts and metadata may use different ID systems (e.g. SRR vs GSM). '
+            f'Try fetching both from the same source, or check that sample IDs align.'
+        )
+
+    return result
+
+
+def handle_remap_metadata_index(params: Dict) -> Dict:
+    """Remap metadata index to use a different column as the sample ID.
+    If the column has duplicates (e.g. technical replicates), this will
+    keep only unique values (first occurrence)."""
+    column = params.get('column')
+    if state.metadata is None:
+        raise ValueError("No metadata loaded")
+    if column not in state.metadata.columns:
+        raise ValueError(f"Column '{column}' not found in metadata")
+
+    # Drop duplicates in the target column (keep first occurrence)
+    meta = state.metadata.copy()
+    meta = meta.drop_duplicates(subset=[column], keep='first')
+    meta = meta.set_index(column)
+    state.metadata = meta
+
+    # Re-check match
+    return handle_check_sample_match({})
+
+
+def handle_merge_metadata(params: Dict) -> Dict:
+    """Merge GEO metadata into recount3 metadata at the technical replicate level.
+
+    When counts use SRR IDs (recount3) and GEO metadata uses GSM IDs, we need
+    to expand the GEO metadata so each SRR run gets the right annotations.
+
+    Strategy:
+    - The existing metadata (from recount3) is indexed by SRR and has sra.sample_title
+    - The new GEO metadata has a 'title' column that matches sra.sample_title
+    - We merge on this shared title, expanding GEO metadata to every SRR
+
+    params:
+        existing_key: column in current metadata to match on (e.g. 'sra.sample_title')
+        new_key: column in new metadata to match on (e.g. 'title')
+        new_meta_path: path to new metadata CSV
+    """
+    new_meta_path = params.get('new_meta_path')
+    existing_key = params.get('existing_key')
+    new_key = params.get('new_key')
+
+    if state.metadata is None:
+        raise ValueError("No metadata loaded")
+
+    new_meta = load_metadata(new_meta_path)
+
+    if existing_key not in state.metadata.columns:
+        raise ValueError(f"Column '{existing_key}' not in current metadata")
+
+    # Get the new key values from new metadata
+    if new_key in new_meta.columns:
+        new_meta_lookup = new_meta.set_index(new_key)
+    elif new_meta.index.name == new_key or new_key == 'index':
+        new_meta_lookup = new_meta
+    else:
+        raise ValueError(f"Column '{new_key}' not in new metadata")
+
+    # For each row in current metadata, look up matching row in new metadata
+    # This expands GEO metadata (1 row per GSM) to every SRR run
+    merged = state.metadata.copy()
+    key_values = merged[existing_key].astype(str)
+
+    new_cols_added = []
+    for col in new_meta_lookup.columns:
+        if col not in merged.columns:
+            mapping = new_meta_lookup[col].to_dict()
+            merged[col] = key_values.map(mapping)
+            new_cols_added.append(col)
+
+    state.metadata = merged
+    matched = key_values.isin(set(new_meta_lookup.index.astype(str))).sum()
+
+    return {
+        'status': 'ok',
+        'matched': int(matched),
+        'total': len(merged),
+        'new_columns': new_cols_added,
+        'metadata_shape': list(merged.shape),
+        'metadata_preview': merged.head(10).to_dict(),
+        'metadata_columns': list(merged.columns),
+        'metadata_index': list(merged.index)
+    }
+
+
 def handle_list_project_files(params: Dict) -> Dict:
     """List files in a project directory."""
     path = params.get('path', '')
@@ -160,11 +326,21 @@ def handle_run_deseq(params: Dict) -> Dict:
     reference = state.analysis_params['reference_level']
     lfc_thresh = state.analysis_params['lfc_threshold']
     padj_thresh = state.analysis_params['padj_threshold']
+    min_count = int(params.get('min_count', 10))
+
+    # Filter out low count genes
+    counts_filtered = state.counts.copy()
+    genes_before = len(counts_filtered)
+    if min_count > 0:
+        keep = counts_filtered.sum(axis=1) >= min_count
+        counts_filtered = counts_filtered.loc[keep]
+    genes_after = len(counts_filtered)
+    genes_filtered = genes_before - genes_after
 
     # Run DESeq2
     state.deseq_runner = DESeqRunner()
     state.deseq_results = state.deseq_runner.run_analysis(
-        counts=state.counts,
+        counts=counts_filtered,
         metadata=state.metadata,
         condition_column=condition_col,
         reference_level=reference
@@ -188,7 +364,8 @@ def handle_run_deseq(params: Dict) -> Dict:
             'total_genes': len(state.deseq_results),
             'significant': int(sig_mask.sum()),
             'upregulated': int(up_mask.sum()),
-            'downregulated': int(down_mask.sum())
+            'downregulated': int(down_mask.sum()),
+            'genes_filtered': genes_filtered
         }
     }
 
@@ -615,6 +792,7 @@ def handle_generate_pca_plot(params: Dict) -> Dict:
     center = params.get('center', True)
     scale = params.get('scale', True)
     show_labels = params.get('show_labels', True)
+    show_legend = params.get('show_legend', True)
     genes = params.get('genes', None)
     output_format = params.get('format', 'svg')
 
@@ -633,6 +811,7 @@ def handle_generate_pca_plot(params: Dict) -> Dict:
         center=center,
         scale=scale,
         show_labels=show_labels,
+        show_legend=show_legend,
         output_format=output_format
     )
 
@@ -961,27 +1140,15 @@ def handle_init_config(params: Dict) -> Dict:
     return {'status': 'ok'}
 
 
-def handle_kallisto_check_platform(params: Dict) -> Dict:
-    """Check if kallisto is available on this platform."""
-    available = state.kallisto_runner.is_available
-    return {
-        'available': available,
-        'platform': sys.platform,
-        'message': (
-            'Kallisto FASTQ processing is not available on Windows. '
-            'Please use macOS or Linux for raw FASTQ analysis, '
-            'or load a pre-computed counts matrix in Step 1.'
-        ) if not available else None,
-    }
-
-
 # Command router
 COMMANDS = {
     'init_config': handle_init_config,
-    'kallisto_check_platform': handle_kallisto_check_platform,
     'load_example_data': handle_load_example_data,
     'load_counts': handle_load_counts,
     'load_metadata': handle_load_metadata,
+    'check_sample_match': handle_check_sample_match,
+    'remap_metadata_index': handle_remap_metadata_index,
+    'merge_metadata': handle_merge_metadata,
     'set_params': handle_set_params,
     'run_deseq': handle_run_deseq,
     'get_volcano_data': handle_get_volcano_data,

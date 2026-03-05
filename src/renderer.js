@@ -6,8 +6,6 @@
 // Global components
 let volcanoPlot = null;
 let boxPlot = null;
-let heatmapPlot = null;
-let gseaPlot = null;
 let scriptPanel = null;
 
 /**
@@ -17,9 +15,6 @@ function initApp() {
     // Initialize components
     volcanoPlot = new VolcanoPlot('volcano-plot');
     boxPlot = new BoxPlot('boxplot-plot');
-    // Heatmap now uses matplotlib only (no Plotly)
-    heatmapPlot = null;
-    gseaPlot = new GSEAPlot('gsea-plot', 'gsea-table');
     scriptPanel = new ScriptPanel();
 
     // Setup navigation
@@ -31,14 +26,14 @@ function initApp() {
     // Setup data loading
     setupDataLoading();
 
+    // Setup GEO / recount3 fetching
+    setupGeoFetching();
+
     // Setup DESeq2 panel
     setupDeseqPanel();
 
     // Setup visualization tabs
     setupVisualizationTabs();
-
-    // Setup GSEA panel
-    setupGseaPanel();
 
     // Setup selected genes display
     setupSelectedGenesDisplay();
@@ -55,7 +50,6 @@ function initApp() {
     // Show placeholders
     volcanoPlot.showPlaceholder();
     boxPlot.showPlaceholder();
-    gseaPlot.showPlaceholder();
 }
 
 /**
@@ -307,6 +301,323 @@ function setupDataLoading() {
     });
 }
 
+// ---------------------------------------------------------------------------
+// GEO / recount3 fetching
+// ---------------------------------------------------------------------------
+
+let rReady = false;
+
+/**
+ * Ensure R environment is installed. Shows overlay if needed.
+ * Returns true if R is ready, false if install was triggered (caller should wait).
+ */
+async function ensureRReady() {
+    if (rReady) return true;
+
+    try {
+        const status = await window.api.checkRSetup();
+        if (status.ready) {
+            rReady = true;
+            return true;
+        }
+    } catch (e) {
+        console.error('check-r-setup failed:', e);
+    }
+
+    // Show R setup overlay
+    const overlay = document.getElementById('r-setup-overlay');
+    overlay.style.display = 'flex';
+    return false;
+}
+
+/**
+ * Setup GEO / recount3 fetch buttons and R install flow.
+ */
+function setupGeoFetching() {
+    const geoInput = document.getElementById('geo-id-input');
+    const btnRecount3 = document.getElementById('btn-fetch-recount3');
+    const btnGeoMeta = document.getElementById('btn-fetch-geo-meta');
+    const btnGeoCounts = document.getElementById('btn-fetch-geo-counts');
+    const btnInstallR = document.getElementById('btn-install-r');
+    const overlay = document.getElementById('r-setup-overlay');
+    const rProgressDiv = document.getElementById('r-setup-progress');
+    const rProgressBar = document.getElementById('r-setup-progress-bar');
+    const rStatus = document.getElementById('r-setup-status');
+    const fetchStatus = document.getElementById('geo-fetch-status');
+    const fetchMessage = document.getElementById('geo-fetch-message');
+
+    if (!geoInput || !btnRecount3 || !btnGeoMeta || !btnGeoCounts) return;
+
+    // --- R setup progress listener ---
+    window.api.onRSetupProgress((data) => {
+        if (rProgressDiv) rProgressDiv.style.display = 'block';
+        if (rProgressBar) rProgressBar.style.width = `${(data.progress || 0) * 100}%`;
+        if (rStatus) rStatus.textContent = data.message || data.phase || '';
+
+        if (data.phase === 'complete') {
+            rReady = true;
+            overlay.style.display = 'none';
+            updateStatusMessage('R environment ready');
+        }
+    });
+
+    // --- Install R button ---
+    btnInstallR?.addEventListener('click', async () => {
+        btnInstallR.disabled = true;
+        btnInstallR.textContent = 'Installing...';
+        rProgressDiv.style.display = 'block';
+
+        try {
+            const result = await window.api.runRSetup();
+            if (result.success) {
+                rReady = true;
+                overlay.style.display = 'none';
+                updateStatusMessage('R environment installed successfully');
+            } else {
+                rStatus.textContent = 'Installation failed: ' + (result.error || 'Unknown error');
+                btnInstallR.disabled = false;
+                btnInstallR.textContent = 'Retry Install';
+            }
+        } catch (err) {
+            rStatus.textContent = 'Error: ' + err.message;
+            btnInstallR.disabled = false;
+            btnInstallR.textContent = 'Retry Install';
+        }
+    });
+
+    // --- Helper: show/hide fetch spinner ---
+    function showFetchSpinner(msg) {
+        fetchStatus.style.display = 'flex';
+        fetchMessage.textContent = msg;
+    }
+    function hideFetchSpinner() {
+        fetchStatus.style.display = 'none';
+    }
+
+    // --- R script progress listener (stderr messages from R) ---
+    window.api.onRScriptProgress((data) => {
+        if (fetchStatus.style.display !== 'none' && data.message) {
+            // Show last meaningful line
+            const lines = data.message.split('\n').filter(l => l.trim());
+            if (lines.length > 0) {
+                const lastLine = lines[lines.length - 1].substring(0, 100);
+                fetchMessage.textContent = lastLine;
+                // Also update the inline status
+                const geoStatus = document.getElementById('geo-tool-status');
+                if (geoStatus && geoStatus.classList.contains('loading')) {
+                    geoStatus.querySelector('.status-text').textContent = lastLine;
+                }
+            }
+        }
+    });
+
+    // --- Fetch from recount3 ---
+    btnRecount3.addEventListener('click', async () => {
+        const geoId = geoInput.value.trim();
+        if (!geoId) {
+            updateStatusMessage('Please enter a GEO ID (GSE...) or SRA ID (SRP...)', true);
+            geoInput.focus();
+            return;
+        }
+
+        if (!(await ensureRReady())) return; // R not ready, overlay shown
+
+        btnRecount3.disabled = true;
+        btnGeoMeta.disabled = true;
+        btnGeoCounts.disabled = true;
+        showFetchSpinner(`Fetching recount3 data for ${geoId}...`);
+        showToolStatus('geo-tool-status', 'loading', `Fetching recount3 data for ${geoId}...`);
+
+        try {
+            const result = await window.api.runRScript('fetch_recount3.R', [geoId]);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // Load counts (always from recount3)
+            if (result.counts_path) {
+                await python.loadCounts(result.counts_path);
+            }
+            // Load metadata only if no metadata is already loaded (user may have fetched from GEO separately)
+            const hasExistingMeta = !!store.get('metadata');
+            if (result.metadata_path && !hasExistingMeta) {
+                await python.loadMetadata(result.metadata_path);
+            }
+
+            showDataPreview();
+            markStepComplete('data');
+            let msg = `recount3 counts loaded for ${geoId}: ${result.counts_shape[0]} genes × ${result.counts_shape[1]} samples`;
+            if (hasExistingMeta) {
+                msg += ' (keeping existing metadata)';
+            }
+            updateStatusMessage(msg);
+            showToolStatus('geo-tool-status', 'success', msg);
+
+        } catch (err) {
+            console.error('recount3 fetch failed:', err);
+            updateStatusMessage('recount3 fetch failed: ' + err.message, true);
+            showToolStatus('geo-tool-status', 'error', 'recount3 fetch failed: ' + err.message);
+        } finally {
+            btnRecount3.disabled = false;
+            btnGeoMeta.disabled = false;
+            btnGeoCounts.disabled = false;
+            hideFetchSpinner();
+        }
+    });
+
+    // --- Fetch GEO metadata ---
+    btnGeoMeta.addEventListener('click', async () => {
+        let geoId = geoInput.value.trim();
+        if (!geoId) {
+            updateStatusMessage('Please enter a GEO ID (GSE...)', true);
+            geoInput.focus();
+            return;
+        }
+
+        // GEO metadata only works with GSE IDs
+        if (!geoId.toUpperCase().startsWith('GSE')) {
+            updateStatusMessage('GEO metadata requires a GSE ID (e.g. GSE123456)', true);
+            return;
+        }
+
+        if (!(await ensureRReady())) return;
+
+        btnRecount3.disabled = true;
+        btnGeoMeta.disabled = true;
+        btnGeoCounts.disabled = true;
+        showFetchSpinner(`Fetching GEO metadata for ${geoId}...`);
+        showToolStatus('geo-tool-status', 'loading', `Fetching GEO metadata for ${geoId}...`);
+
+        try {
+            const result = await window.api.runRScript('fetch_geo_metadata.R', [geoId]);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // Check if counts are already loaded (e.g. from recount3 with SRR IDs)
+            // If so, merge GEO metadata into existing metadata instead of replacing it
+            const existingMeta = store.get('metadata');
+            const existingCounts = store.get('counts');
+            let msg;
+
+            if (existingMeta && existingCounts && result.metadata_path) {
+                // Check if existing metadata has sra.sample_title (recount3 metadata)
+                const metaCols = store.get('metadataColumns') || [];
+                const hasSampleTitle = metaCols.includes('sra.sample_title');
+
+                if (hasSampleTitle) {
+                    // Merge GEO metadata into existing recount3 metadata via title
+                    // This expands GEO metadata (1 per GSM) to every SRR technical replicate
+                    const mergeResult = await python.run('merge_metadata', {
+                        new_meta_path: result.metadata_path,
+                        existing_key: 'sra.sample_title',
+                        new_key: 'title',
+                    });
+                    msg = `GEO metadata merged: ${mergeResult.matched} of ${mergeResult.total} samples matched via title`;
+                    if (mergeResult.new_columns && mergeResult.new_columns.length > 0) {
+                        msg += ` (added ${mergeResult.new_columns.length} columns: ${mergeResult.new_columns.slice(0, 5).join(', ')})`;
+                    }
+                    // Update store with merged metadata
+                    store.update({
+                        metadata: mergeResult.metadata_preview,
+                        metadataShape: mergeResult.metadata_shape,
+                        metadataColumns: mergeResult.metadata_columns,
+                        metadataIndex: mergeResult.metadata_index,
+                    });
+                } else {
+                    // No recount3 metadata — just load as normal
+                    await python.loadMetadata(result.metadata_path);
+                    msg = `GEO metadata loaded for ${geoId}`;
+                }
+            } else {
+                // No existing data, just load metadata directly
+                if (result.metadata_path) {
+                    await python.loadMetadata(result.metadata_path);
+                }
+                msg = `GEO metadata loaded for ${geoId}`;
+                if (result.expression_available) {
+                    msg += ' (expression data also available — use GEO Counts to fetch it separately)';
+                } else {
+                    msg += ' (use recount3 or GEO Counts for count data)';
+                }
+            }
+
+            showDataPreview();
+            markStepComplete('data');
+            updateStatusMessage(msg);
+            showToolStatus('geo-tool-status', 'success', msg);
+
+        } catch (err) {
+            console.error('GEO fetch failed:', err);
+            updateStatusMessage('GEO fetch failed: ' + err.message, true);
+            showToolStatus('geo-tool-status', 'error', 'GEO metadata fetch failed: ' + err.message);
+        } finally {
+            btnRecount3.disabled = false;
+            btnGeoMeta.disabled = false;
+            btnGeoCounts.disabled = false;
+            hideFetchSpinner();
+        }
+    });
+
+    // --- Fetch GEO Counts ---
+    btnGeoCounts.addEventListener('click', async () => {
+        let geoId = geoInput.value.trim();
+        if (!geoId) {
+            updateStatusMessage('Please enter a GEO ID (GSE...)', true);
+            geoInput.focus();
+            return;
+        }
+
+        if (!geoId.toUpperCase().startsWith('GSE')) {
+            updateStatusMessage('GEO counts requires a GSE ID (e.g. GSE123456)', true);
+            return;
+        }
+
+        if (!(await ensureRReady())) return;
+
+        btnRecount3.disabled = true;
+        btnGeoMeta.disabled = true;
+        btnGeoCounts.disabled = true;
+        showFetchSpinner(`Fetching GEO counts for ${geoId}...`);
+        showToolStatus('geo-tool-status', 'loading', `Fetching GEO counts for ${geoId}...`);
+
+        try {
+            const result = await window.api.runRScript('fetch_geo_counts.R', [geoId]);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // Load counts only
+            let msg = '';
+            if (result.counts_path) {
+                await python.loadCounts(result.counts_path);
+                const src = result.counts_source === 'geo_rnaseq_counts' ? 'GEO RNA-seq counts'
+                          : result.counts_source === 'supplementary' ? 'supplementary files'
+                          : 'series matrix';
+                msg = `GEO counts loaded from ${src}: ${result.counts_shape[0]} genes × ${result.counts_shape[1]} samples`;
+            }
+
+            showDataPreview();
+            markStepComplete('data');
+            updateStatusMessage(msg);
+            showToolStatus('geo-tool-status', 'success', msg);
+
+        } catch (err) {
+            console.error('GEO counts fetch failed:', err);
+            updateStatusMessage('GEO counts fetch failed: ' + err.message, true);
+            showToolStatus('geo-tool-status', 'error', 'GEO counts fetch failed: ' + err.message);
+        } finally {
+            btnRecount3.disabled = false;
+            btnGeoMeta.disabled = false;
+            btnGeoCounts.disabled = false;
+            hideFetchSpinner();
+        }
+    });
+}
+
 /**
  * Show data preview tables using Tabulator
  */
@@ -342,6 +653,64 @@ function showDataPreview() {
 
     // Populate column selectors
     populateColumnSelectors();
+
+    // Check sample matching if both are loaded
+    checkSampleMatch();
+}
+
+async function checkSampleMatch() {
+    const counts = store.get('counts');
+    const metadata = store.get('metadata');
+    if (!counts || !metadata) {
+        hideToolStatus('sample-match-status');
+        document.getElementById('sample-match-action').style.display = 'none';
+        return;
+    }
+
+    try {
+        const result = await python.run('check_sample_match', {});
+        const actionDiv = document.getElementById('sample-match-action');
+
+        if (result.status === 'match') {
+            showToolStatus('sample-match-status', 'success', result.message);
+            actionDiv.style.display = 'none';
+        } else if (result.status === 'partial') {
+            showToolStatus('sample-match-status', 'error', result.message);
+            if (result.suggested_column) {
+                actionDiv.style.display = 'flex';
+                document.getElementById('sample-match-suggestion').textContent =
+                    `Column "${result.suggested_column}" matches ${result.suggested_overlap} samples.`;
+                document.getElementById('btn-remap-samples').onclick = async () => {
+                    await python.run('remap_metadata_index', { column: result.suggested_column });
+                    // Refresh metadata display
+                    const metaResult = await python.run('check_sample_match', {});
+                    showDataPreview();
+                    if (metaResult.status === 'match') {
+                        showToolStatus('sample-match-status', 'success', metaResult.message);
+                        actionDiv.style.display = 'none';
+                    }
+                };
+            } else {
+                actionDiv.style.display = 'none';
+            }
+        } else {
+            // mismatch
+            showToolStatus('sample-match-status', 'error', result.message);
+            if (result.suggested_column) {
+                actionDiv.style.display = 'flex';
+                document.getElementById('sample-match-suggestion').textContent =
+                    `Column "${result.suggested_column}" matches ${result.suggested_overlap} samples.`;
+                document.getElementById('btn-remap-samples').onclick = async () => {
+                    await python.run('remap_metadata_index', { column: result.suggested_column });
+                    showDataPreview();
+                };
+            } else {
+                actionDiv.style.display = 'none';
+            }
+        }
+    } catch (err) {
+        console.error('Sample match check failed:', err);
+    }
 }
 
 /**
@@ -465,34 +834,6 @@ function renderMetadataPreviewTable(data) {
 }
 
 /**
- * Create HTML table from data object
- */
-function createPreviewTable(data) {
-    const columns = Object.keys(data);
-    if (columns.length === 0) return '<p>No data</p>';
-
-    const rowKeys = Object.keys(data[columns[0]]);
-
-    let html = '<table class="data-table"><thead><tr><th></th>';
-    columns.forEach(col => html += `<th>${col}</th>`);
-    html += '</tr></thead><tbody>';
-
-    rowKeys.slice(0, 10).forEach(rowKey => {
-        html += `<tr><td><strong>${rowKey}</strong></td>`;
-        columns.forEach(col => {
-            const value = data[col][rowKey];
-            const displayValue = typeof value === 'number' ?
-                (Number.isInteger(value) ? value : value.toFixed(2)) : value;
-            html += `<td>${displayValue}</td>`;
-        });
-        html += '</tr>';
-    });
-
-    html += '</tbody></table>';
-    return html;
-}
-
-/**
  * Populate condition column and reference level selectors
  */
 function populateColumnSelectors() {
@@ -568,6 +909,7 @@ function setupDeseqPanel() {
             deseqStatus.classList.remove('hidden');
             deseqSummary.classList.add('hidden');
             resultsSection.classList.add('hidden');
+            showToolStatus('analysis-tool-status', 'loading', `Running ${toolNames[activeTool]} analysis...`);
 
             // Shared parameters
             const params = {
@@ -582,6 +924,9 @@ function setupDeseqPanel() {
                 'params.lfcThreshold': params.lfc_threshold,
                 'params.padjThreshold': params.padj_threshold
             });
+
+            // Shared min count filter
+            params.min_count = parseInt(document.getElementById('deseq-min-count')?.value || '10');
 
             let result;
 
@@ -611,7 +956,10 @@ function setupDeseqPanel() {
             renderResultsTable(result.results);
 
             // Update status
-            updateStatusMessage(`${toolNames[activeTool]} analysis complete`);
+            const filteredMsg = result.summary.genes_filtered ? ` (${result.summary.genes_filtered} low-count genes filtered)` : '';
+            const successMsg = `${toolNames[activeTool]} analysis complete: ${result.summary.significant} significant genes${filteredMsg}`;
+            updateStatusMessage(successMsg);
+            showToolStatus('analysis-tool-status', 'success', successMsg);
             document.getElementById('analysis-status').textContent = `Analysis: Complete (${toolNames[activeTool]})`;
             markStepComplete('deseq');
 
@@ -626,6 +974,7 @@ function setupDeseqPanel() {
         } catch (error) {
             console.error(`${toolNames[activeTool]} analysis failed:`, error);
             updateStatusMessage('Analysis failed: ' + error.message, true);
+            showToolStatus('analysis-tool-status', 'error', `${toolNames[activeTool]} analysis failed: ${error.message}`);
         } finally {
             btnRunDeseq.disabled = false;
             deseqStatus.classList.add('hidden');
@@ -638,7 +987,6 @@ function setupDeseqPanel() {
 
 // Global Tabulator instances
 let deseqTable = null;
-let gseaTable = null;
 let gseaVizTable = null;
 let countsPreviewTable = null;
 let metadataPreviewTable = null;
@@ -972,6 +1320,7 @@ function setupVisualizationTabs() {
     const pcaCenter = document.getElementById('pca-center');
     const pcaScale = document.getElementById('pca-scale');
     const pcaShowLabels = document.getElementById('pca-show-labels');
+    const pcaShowLegend = document.getElementById('pca-show-legend');
 
     const updatePca = async () => {
         if (store.hasResults()) {
@@ -985,6 +1334,7 @@ function setupVisualizationTabs() {
     pcaCenter?.addEventListener('change', updatePca);
     pcaScale?.addEventListener('change', updatePca);
     pcaShowLabels?.addEventListener('change', updatePca);
+    pcaShowLegend?.addEventListener('change', updatePca);
     document.getElementById('pca-use-selected-genes')?.addEventListener('change', updatePca);
 
     // Include checkboxes
@@ -1186,6 +1536,7 @@ async function generateMplPca() {
         const center = document.getElementById('pca-center')?.checked ?? true;
         const scale = document.getElementById('pca-scale')?.checked ?? true;
         const showLabels = document.getElementById('pca-show-labels')?.checked ?? true;
+        const showLegend = document.getElementById('pca-show-legend')?.checked ?? true;
         const useSelectedGenes = document.getElementById('pca-use-selected-genes')?.checked ?? false;
 
         const genes = useSelectedGenes ? store.get('selectedGenes') : null;
@@ -1200,6 +1551,7 @@ async function generateMplPca() {
             center: center,
             scale: scale,
             showLabels: showLabels,
+            showLegend: showLegend,
             genes: genes,
             format: 'svg'
         });
@@ -1301,6 +1653,7 @@ async function generatePlotlyPca() {
         const center = document.getElementById('pca-center')?.checked ?? true;
         const scale = document.getElementById('pca-scale')?.checked ?? true;
         const showLabels = document.getElementById('pca-show-labels')?.checked ?? true;
+        const showLegend = document.getElementById('pca-show-legend')?.checked ?? true;
         const useSelectedGenes = document.getElementById('pca-use-selected-genes')?.checked ?? false;
         const genes = useSelectedGenes ? store.get('selectedGenes') : null;
 
@@ -1310,7 +1663,7 @@ async function generatePlotlyPca() {
         }
 
         const result = await python.generatePcaPlot({
-            colorBy, normalization, center, scale, showLabels, genes, format: 'svg'
+            colorBy, normalization, center, scale, showLabels, showLegend, genes, format: 'svg'
         });
 
         if (!result.sample_data || result.sample_data.length === 0) {
@@ -1397,7 +1750,7 @@ async function generatePlotlyPca() {
             xaxis: { title: `PC1 (${varExplained[0].toFixed(1)}% variance)`, zeroline: true, zerolinecolor: '#ccc', gridcolor: '#f0f0f0' },
             yaxis: { title: `PC2 (${varExplained[1].toFixed(1)}% variance)`, zeroline: true, zerolinecolor: '#ccc', gridcolor: '#f0f0f0' },
             hovermode: 'closest',
-            showlegend: true,
+            showlegend: showLegend,
             legend: { x: 1, xanchor: 'right', y: 1, bgcolor: 'rgba(255,255,255,0.9)', bordercolor: '#ccc', borderwidth: 1 },
             margin: { l: 60, r: 40, t: 60, b: 60 },
             paper_bgcolor: 'white',
@@ -1698,157 +2051,6 @@ function renderGseaVizTable(results) {
     });
 }
 
-/**
- * Setup GSEA panel
- */
-function setupGseaPanel() {
-    const btnRunGsea = document.getElementById('btn-run-gsea');
-    const gseaStatus = document.getElementById('gsea-status');
-    const gseaResults = document.getElementById('gsea-results');
-
-    btnRunGsea?.addEventListener('click', async () => {
-        if (!store.hasResults()) {
-            updateStatusMessage('Run DESeq2 analysis first', true);
-            return;
-        }
-
-        try {
-            btnRunGsea.disabled = true;
-            gseaStatus.classList.remove('hidden');
-            gseaResults.classList.add('hidden');
-
-            const geneSets = document.getElementById('gene-set-library').value;
-            const method = document.getElementById('gsea-method').value;
-
-            const result = await python.runGsea({ geneSets, method });
-
-            gseaResults.classList.remove('hidden');
-
-            // Store results
-            store.set('gseaResults', result.results);
-
-            // Generate matplotlib GSEA plot
-            const topN = parseInt(document.getElementById('gsea-topn')?.value || 15);
-            await generateMplGsea(topN);
-
-            // Render GSEA results table with Tabulator
-            renderGseaTable(result.results);
-
-            updateStatusMessage('Pathway analysis complete');
-
-        } catch (error) {
-            console.error('GSEA failed:', error);
-            updateStatusMessage('Pathway analysis failed: ' + error.message, true);
-        } finally {
-            btnRunGsea.disabled = false;
-            gseaStatus.classList.add('hidden');
-        }
-    });
-
-    // Refresh GSEA plot button
-    document.getElementById('btn-refresh-gsea-plot')?.addEventListener('click', async () => {
-        const topN = parseInt(document.getElementById('gsea-topn')?.value || 15);
-        await generateMplGsea(topN);
-    });
-
-    document.getElementById('include-gsea')?.addEventListener('change', (e) => {
-        store.setInclude('gsea', e.target.checked);
-    });
-}
-
-/**
- * Render GSEA results table using Tabulator
- */
-function renderGseaTable(results) {
-    if (!results || results.length === 0) return;
-
-    // Destroy existing table
-    if (gseaTable) {
-        gseaTable.destroy();
-    }
-
-    // Determine column names (varies by GSEA method)
-    const firstRow = results[0];
-    const termCol = 'Term' in firstRow ? 'Term' : 'term';
-    const nesCol = 'NES' in firstRow ? 'NES' : ('nes' in firstRow ? 'nes' : null);
-    const fdrCol = 'FDR q-val' in firstRow ? 'FDR q-val' : ('fdr' in firstRow ? 'fdr' : 'Adjusted P-value');
-    const pvalCol = 'NOM p-val' in firstRow ? 'NOM p-val' : ('pval' in firstRow ? 'pval' : 'P-value');
-
-    const columns = [
-        {
-            title: 'Pathway',
-            field: termCol,
-            headerFilter: 'input',
-            headerFilterPlaceholder: 'Search...',
-            width: 300,
-            formatter: function(cell) {
-                const val = cell.getValue();
-                return val.length > 50 ? val.substring(0, 50) + '...' : val;
-            },
-            tooltip: true
-        }
-    ];
-
-    if (nesCol && nesCol in firstRow) {
-        columns.push({
-            title: 'NES',
-            field: nesCol,
-            sorter: 'number',
-            formatter: function(cell) {
-                const val = cell.getValue();
-                if (val == null) return '-';
-                const color = val > 0 ? '#C97B7B' : '#7BA3C9';
-                return `<span style="color: ${color}; font-weight: bold">${val.toFixed(3)}</span>`;
-            }
-        });
-    }
-
-    columns.push({
-        title: 'P-value',
-        field: pvalCol,
-        sorter: 'number',
-        formatter: function(cell) {
-            const val = cell.getValue();
-            return val != null ? val.toExponential(2) : '-';
-        }
-    });
-
-    columns.push({
-        title: 'FDR',
-        field: fdrCol,
-        sorter: 'number',
-        headerFilter: 'number',
-        headerFilterPlaceholder: 'max',
-        headerFilterFunc: '<=',
-        formatter: function(cell) {
-            const val = cell.getValue();
-            if (val == null) return '-';
-            const style = val < 0.25 ? 'font-weight: bold; color: #8FB996' : '';
-            return `<span style="${style}">${val.toExponential(2)}</span>`;
-        }
-    });
-
-    // Add gene count column if available
-    if ('Gene_set' in firstRow || 'geneset_size' in firstRow) {
-        columns.push({
-            title: 'Size',
-            field: 'Gene_set' in firstRow ? 'Gene_set' : 'geneset_size',
-            sorter: 'number'
-        });
-    }
-
-    gseaTable = new Tabulator('#gsea-table', {
-        data: results,
-        height: '400px',
-        layout: 'fitColumns',
-        pagination: true,
-        paginationSize: 25,
-        movableColumns: true,
-        placeholder: 'No pathway results',
-        columns: columns,
-        initialSort: nesCol ? [{ column: nesCol, dir: 'desc' }] : []
-    });
-}
 
 /**
  * Setup selected genes display
@@ -1917,6 +2119,42 @@ function updateStatusMessage(message, isError = false) {
 }
 
 /**
+ * Show an inline status message under a tool section.
+ * @param {string} elementId - ID of the .tool-status-msg element
+ * @param {'loading'|'error'|'success'} type
+ * @param {string} message
+ * @param {number} [autoDismissMs] - auto-hide after ms (0 = never, default: success=5000, error=0)
+ */
+function showToolStatus(elementId, type, message, autoDismissMs) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    el.className = 'tool-status-msg visible ' + type;
+    el.querySelector('.status-text').textContent = message;
+
+    // Wire up dismiss button
+    const dismissBtn = el.querySelector('.status-dismiss');
+    if (dismissBtn) {
+        dismissBtn.onclick = () => { el.className = 'tool-status-msg'; };
+    }
+
+    // Auto-dismiss for success messages
+    const timeout = autoDismissMs !== undefined ? autoDismissMs : (type === 'success' ? 5000 : 0);
+    if (timeout > 0) {
+        setTimeout(() => {
+            if (el.classList.contains(type)) {
+                el.className = 'tool-status-msg';
+            }
+        }, timeout);
+    }
+}
+
+function hideToolStatus(elementId) {
+    const el = document.getElementById(elementId);
+    if (el) el.className = 'tool-status-msg';
+}
+
+/**
  * Update selected genes count in status bar
  */
 function updateSelectedCount(count) {
@@ -1930,15 +2168,9 @@ function updateSelectedCount(count) {
  * Mark a workflow step as complete
  */
 function markStepComplete(stepId) {
-    // Mark tab as completed (new horizontal tabs)
     const tab = document.querySelector(`.nav-tab[data-panel="${stepId}"]`);
     if (tab) {
         tab.classList.add('completed');
-    }
-    // Legacy sidebar compat
-    const step = document.querySelector(`.nav-step[data-panel="${stepId}"]`);
-    if (step) {
-        step.classList.add('completed');
     }
 }
 
@@ -1998,6 +2230,28 @@ function setupCitationsPanel() {
   year={2010},
   publisher={Oxford University Press},
   doi={10.1093/bioinformatics/btp616}
+}`,
+        recount3: `@article{wilks2021recount3,
+  title={recount3: summaries and queries for large-scale RNA-seq expression and splicing},
+  author={Wilks, Christopher and Zheng, Shijie C and Chen, Feng Yong and Charles, Rone and Solomon, Brad and Ling, Jonathan P and Imada, Eddie Luidy and Zhang, David and Joseph, Lance and Leek, Jeffrey T and Jaffe, Andrew E and Nellore, Abhinav and Collado-Torres, Leonardo and Hansen, Kasper D and Langmead, Ben},
+  journal={Genome Biology},
+  volume={22},
+  number={1},
+  pages={323},
+  year={2021},
+  publisher={BioMed Central},
+  doi={10.1186/s13059-021-02533-6}
+}`,
+        geoquery: `@article{davis2007geoquery,
+  title={GEOquery: a bridge between the Gene Expression Omnibus (GEO) and BioConductor},
+  author={Davis, Sean and Meltzer, Paul S},
+  journal={Bioinformatics},
+  volume={23},
+  number={14},
+  pages={1846--1847},
+  year={2007},
+  publisher={Oxford University Press},
+  doi={10.1093/bioinformatics/btm254}
 }`
     };
 

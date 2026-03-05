@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const { setupPythonEnvironment, isPythonSetUp, getPythonBinPath } = require('./scripts/setup-python');
+const { setupREnvironment, isRSetUp, getRscriptBinPath, getRHome, runRscript } = require('./scripts/setup-r');
 
 let mainWindow;
 let pythonProcess = null;
@@ -296,6 +297,81 @@ ipcMain.handle('start-python-backend', async () => {
     debugLog('Will start Python with:', pyPath, 'exists:', fs.existsSync(pyPath));
     startPythonBackend();
     return { started: true };
+});
+
+// ---------------------------------------------------------------------------
+// R environment setup (on-demand)
+// ---------------------------------------------------------------------------
+
+function getREnvDir() {
+    return path.join(app.getPath('userData'), 'r-env');
+}
+
+function getRScriptsDir() {
+    return app.isPackaged
+        ? path.join(process.resourcesPath, 'r_scripts')
+        : path.join(__dirname, 'r_scripts');
+}
+
+ipcMain.handle('check-r-setup', async () => {
+    const envDir = getREnvDir();
+    const ready = isRSetUp(envDir);
+    debugLog('check-r-setup:', ready);
+    return { ready };
+});
+
+ipcMain.handle('run-r-setup', async () => {
+    const envDir = getREnvDir();
+    const rScriptsDir = getRScriptsDir();
+    debugLog('run-r-setup: envDir:', envDir, 'rScriptsDir:', rScriptsDir);
+
+    try {
+        const rscriptBin = await setupREnvironment(envDir, rScriptsDir, (phase, progress, message) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('r-setup-progress', { phase, progress, message });
+            }
+        });
+        debugLog('R setup complete, Rscript at:', rscriptBin);
+        return { success: true, rscriptPath: rscriptBin };
+    } catch (error) {
+        debugLog('R setup failed:', error.message);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('run-r-script', async (event, scriptName, args) => {
+    const envDir = getREnvDir();
+    const rScriptsDir = getRScriptsDir();
+    const rscriptBin = getRscriptBinPath(envDir);
+    const libraryPath = path.join(envDir, 'library');
+    const scriptPath = path.join(rScriptsDir, scriptName);
+
+    // Use a stable cache directory per study ID so GEOquery/recount3 files persist
+    const studyId = (args[0] || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cacheBase = path.join(app.getPath('userData'), 'data-cache');
+    const outputDir = path.join(cacheBase, `${scriptName.replace('.R', '')}-${studyId}`);
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    debugLog('run-r-script:', scriptName, 'args:', args, 'outputDir:', outputDir);
+
+    try {
+        const result = await runRscript(rscriptBin, scriptPath, [...args, libraryPath, outputDir], envDir, (output) => {
+            debugLog('R stderr:', output.substring(0, 200));
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('r-script-progress', { message: output.trim() });
+            }
+        });
+
+        // Parse JSON from stdout
+        const stdout = result.stdout.trim();
+        const jsonLine = stdout.split('\n').pop(); // last line is the JSON
+        const parsed = JSON.parse(jsonLine);
+        debugLog('R script result:', JSON.stringify(parsed).substring(0, 200));
+        return parsed;
+    } catch (error) {
+        debugLog('R script failed:', error.message);
+        return { error: error.message };
+    }
 });
 
 // File dialogs

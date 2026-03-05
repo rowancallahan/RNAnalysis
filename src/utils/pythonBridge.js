@@ -130,14 +130,6 @@ class PythonBridge {
     }
 
     /**
-     * Set analysis parameters
-     */
-    async setParams(params) {
-        await this.run('set_params', params);
-        store.update({ params });
-    }
-
-    /**
      * Set active differential testing tool
      */
     async setActiveTool(tool) {
@@ -230,13 +222,6 @@ class PythonBridge {
     }
 
     /**
-     * Set selected genes
-     */
-    async setSelectedGenes(genes) {
-        await this.run('set_selected_genes', { genes });
-    }
-
-    /**
      * Generate Python script
      */
     async generateScript(includeSections) {
@@ -251,13 +236,6 @@ class PythonBridge {
             }
         });
         return result.script;
-    }
-
-    /**
-     * Get gene info
-     */
-    async getGeneInfo(gene) {
-        return await this.run('get_gene_info', { gene });
     }
 
     /**
@@ -321,19 +299,13 @@ class PythonBridge {
             center: options.center !== false,
             scale: options.scale !== false,
             show_labels: options.showLabels !== false,
+            show_legend: options.showLegend !== false,
             format: options.format || 'svg'
         };
         if (options.genes && options.genes.length > 0) {
             params.genes = options.genes;
         }
         return await this.run('generate_pca_plot', params);
-    }
-
-    /**
-     * Get metadata columns for dropdown
-     */
-    async getMetadataColumns() {
-        return await this.run('get_metadata_columns', {});
     }
 
     // ------------------------------------------------------------------
