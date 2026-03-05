@@ -18,7 +18,7 @@ Javascript packages are relatively few, pretty much just Tabulator, Plotly, Elec
 That being said I currently can't make any guarantees about weird behavior so if you do find this useful and there is a major bug, let me know and open an issue.
 
 
-## Citation
+## Citing this tool
 
 All that being said if you use RNAnalysis in your research (especially after I have verified things) and find it is helpful or useful.
 
@@ -34,7 +34,7 @@ Please consider giving me a citation (or a star :) )!
 }
 ```
 
-## Citations
+## Citing the methods used in this tool
 
 This work is created by combining a collection of truly awesome packages and most of the credit should go to the authors below for making easy to use and widely available analysis packages. Please cite them if you use any of their methods for your analysis.
 
